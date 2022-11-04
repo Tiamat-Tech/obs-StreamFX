@@ -17,14 +17,17 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
  */
 
+//--------------------------------------------------------------------------------//
+// THIS FEATURE IS DEPRECATED. SUBMITTED PATCHES WILL BE REJECTED.
+//--------------------------------------------------------------------------------//
+
 #pragma once
 #include "handler.hpp"
 
 extern "C" {
-#pragma warning(push)
-#pragma warning(disable : 4244)
+#include "warning-disable.hpp"
 #include <libavcodec/avcodec.h>
-#pragma warning(pop)
+#include "warning-enable.hpp"
 }
 
 namespace streamfx::encoder::ffmpeg::handler {

@@ -1,5 +1,5 @@
 // FFMPEG Video Encoder Integration for OBS Studio
-// Copyright (c) 2019 Michael Fabian Dirks <info@xaymar.com>
+// Copyright (c) 2019-2022 Michael Fabian Dirks <info@xaymar.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -20,18 +20,20 @@
 // SOFTWARE.
 
 #include "tools.hpp"
-#include <list>
-#include <sstream>
 #include "plugin.hpp"
 
+#include "warning-disable.hpp"
+#include <list>
+#include <sstream>
+#include "warning-enable.hpp"
+
 extern "C" {
-#pragma warning(push)
-#pragma warning(disable : 4244)
+#include "warning-disable.hpp"
 #include <libavcodec/avcodec.h>
 #include <libavutil/error.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
-#pragma warning(pop)
+#include "warning-enable.hpp"
 }
 
 using namespace streamfx::ffmpeg;
@@ -86,22 +88,28 @@ const char* tools::get_error_description(int error)
 }
 
 static std::map<video_format, AVPixelFormat> const obs_to_av_format_map = {
-	{VIDEO_FORMAT_I420, AV_PIX_FMT_YUV420P},  // YUV 4:2:0
-	{VIDEO_FORMAT_NV12, AV_PIX_FMT_NV12},     // NV12 Packed YUV
-	{VIDEO_FORMAT_YVYU, AV_PIX_FMT_YVYU422},  // YVYU Packed YUV
-	{VIDEO_FORMAT_YUY2, AV_PIX_FMT_YUYV422},  // YUYV Packed YUV
-	{VIDEO_FORMAT_UYVY, AV_PIX_FMT_UYVY422},  // UYVY Packed YUV
-	{VIDEO_FORMAT_RGBA, AV_PIX_FMT_RGBA},     //
-	{VIDEO_FORMAT_BGRA, AV_PIX_FMT_BGRA},     //
-	{VIDEO_FORMAT_BGRX, AV_PIX_FMT_BGR0},     //
-	{VIDEO_FORMAT_Y800, AV_PIX_FMT_GRAY8},    //
-	{VIDEO_FORMAT_I444, AV_PIX_FMT_YUV444P},  //
-	{VIDEO_FORMAT_BGR3, AV_PIX_FMT_BGR24},    //
-	{VIDEO_FORMAT_I422, AV_PIX_FMT_YUV422P},  //
-	{VIDEO_FORMAT_I40A, AV_PIX_FMT_YUVA420P}, //
-	{VIDEO_FORMAT_I42A, AV_PIX_FMT_YUVA422P}, //
-	{VIDEO_FORMAT_YUVA, AV_PIX_FMT_YUVA444P}, //
-											  //{VIDEO_FORMAT_AYUV, AV_PIX_FMT_AYUV444P}, //
+	{VIDEO_FORMAT_I420, AV_PIX_FMT_YUV420P},    // 4:2:0 YUV, 8bit, Planar
+	{VIDEO_FORMAT_NV12, AV_PIX_FMT_NV12},       // 4:2:0 YUV, 8bit, Packed (Y+UV)
+	{VIDEO_FORMAT_YVYU, AV_PIX_FMT_YVYU422},    // 4:2:0 YUV, 8bit, Packed (Y+UV)
+	{VIDEO_FORMAT_YUY2, AV_PIX_FMT_YUYV422},    // 4:2:2 YUV, 8bit, Packed (Y+UV)
+	{VIDEO_FORMAT_UYVY, AV_PIX_FMT_UYVY422},    // 4:2:2 YUV, 8bit, Packed (Y+UV)
+	{VIDEO_FORMAT_RGBA, AV_PIX_FMT_RGBA},       // 4:4:4:4 RGBA, 8bit, Planar
+	{VIDEO_FORMAT_BGRA, AV_PIX_FMT_BGRA},       // 4:4:4:4 BGRA, 8bit, Planar
+	{VIDEO_FORMAT_BGRX, AV_PIX_FMT_BGR0},       // 4:4:4 BGR, 8bit, Planar
+	{VIDEO_FORMAT_Y800, AV_PIX_FMT_GRAY8},      // 4:0:0 Y, 8bit, Planar
+	{VIDEO_FORMAT_I444, AV_PIX_FMT_YUV444P},    // 4:4:4 YUV, 8bit, Planar
+	{VIDEO_FORMAT_BGR3, AV_PIX_FMT_BGR24},      // 4:4:4 BGR, 8bit, Planar
+	{VIDEO_FORMAT_I422, AV_PIX_FMT_YUV422P},    // 4:2:2 YUV, 8bit, Planar
+	{VIDEO_FORMAT_I40A, AV_PIX_FMT_YUVA420P},   // 4:2:0:4 YUVA, 8bit, Planar
+	{VIDEO_FORMAT_I42A, AV_PIX_FMT_YUVA422P},   // 4:2:2:4 YUVA, 8bit, Planar
+	{VIDEO_FORMAT_YUVA, AV_PIX_FMT_YUVA444P},   // 4:4:4:4 YUVA, 8bit, Planar
+	{VIDEO_FORMAT_AYUV, AV_PIX_FMT_NONE},       // No compatible format known
+	{VIDEO_FORMAT_I010, AV_PIX_FMT_YUV420P10},  // 4:2:0, 10bit, Planar
+	{VIDEO_FORMAT_P010, AV_PIX_FMT_P010},       // 4:2:0, 10bit, Packed (Y+UV)
+	{VIDEO_FORMAT_I210, AV_PIX_FMT_YUV422P10},  // 4:2:2 YUV, 10bit, Planar
+	{VIDEO_FORMAT_I412, AV_PIX_FMT_YUV444P12},  // 4:4:4 YUV, 12bit, Planar
+	{VIDEO_FORMAT_YA2L, AV_PIX_FMT_YUVA444P12}, // 4:4:4:4 YUVA, 12bit, Planar
+
 };
 
 AVPixelFormat tools::obs_videoformat_to_avpixelformat(video_format v)
@@ -149,6 +157,9 @@ AVColorSpace tools::obs_to_av_color_space(video_colorspace v)
 	case VIDEO_CS_709:  // BT.709
 	case VIDEO_CS_SRGB: // sRGB
 		return AVCOL_SPC_BT709;
+	case VIDEO_CS_2100_PQ:
+	case VIDEO_CS_2100_HLG:
+		return AVCOL_SPC_ICTCP;
 	default:
 		throw std::invalid_argument("Unknown Color Space");
 	}
@@ -163,6 +174,9 @@ AVColorPrimaries streamfx::ffmpeg::tools::obs_to_av_color_primary(video_colorspa
 	case VIDEO_CS_709:  // BT.709
 	case VIDEO_CS_SRGB: // sRGB
 		return AVCOL_PRI_BT709;
+	case VIDEO_CS_2100_PQ:
+	case VIDEO_CS_2100_HLG:
+		return AVCOL_PRI_BT2020;
 	default:
 		throw std::invalid_argument("Unknown Color Primaries");
 	}
@@ -178,6 +192,10 @@ AVColorTransferCharacteristic streamfx::ffmpeg::tools::obs_to_av_color_transfer_
 		return AVCOL_TRC_BT709;
 	case VIDEO_CS_SRGB: // sRGB with IEC 61966-2-1
 		return AVCOL_TRC_IEC61966_2_1;
+	case VIDEO_CS_2100_PQ:
+		return AVCOL_TRC_SMPTE2084;
+	case VIDEO_CS_2100_HLG:
+		return AVCOL_TRC_ARIB_STD_B67;
 	default:
 		throw std::invalid_argument("Unknown Color Transfer Characteristics");
 	}
@@ -280,7 +298,7 @@ std::vector<AVPixelFormat> tools::get_software_formats(const AVPixelFormat* list
 
 	fmts.push_back(AV_PIX_FMT_NONE);
 
-	return std::move(fmts);
+	return fmts;
 }
 
 void tools::context_setup_from_obs(const video_output_info* voi, AVCodecContext* context)
@@ -357,66 +375,67 @@ const char* tools::get_thread_type_name(int thread_type)
 	}
 }
 
-void tools::print_av_option_bool(AVCodecContext* ctx_codec, const char* option, std::string text, bool inverse)
+void tools::print_av_option_bool(AVCodecContext* ctx_codec, const char* option, std::string_view text, bool inverse)
 {
 	print_av_option_bool(ctx_codec, ctx_codec, option, text, inverse);
 }
 
-void tools::print_av_option_bool(AVCodecContext* ctx_codec, void* ctx_option, const char* option, std::string text,
+void tools::print_av_option_bool(AVCodecContext* ctx_codec, void* ctx_option, const char* option, std::string_view text,
 								 bool inverse)
 {
 	int64_t v = 0;
 	if (int err = av_opt_get_int(ctx_option, option, AV_OPT_SEARCH_CHILDREN, &v); err != 0) {
-		DLOG_INFO("[%s] %s: <Error: %s>", ctx_codec->codec->name, text.c_str(),
+		DLOG_INFO("[%s] %s: <Error: %s>", ctx_codec->codec->name, text.data(),
 				  streamfx::ffmpeg::tools::get_error_description(err));
 	} else {
-		DLOG_INFO("[%s] %s: %s%s", ctx_codec->codec->name, text.c_str(),
+		DLOG_INFO("[%s] %s: %s%s", ctx_codec->codec->name, text.data(),
 				  (inverse ? v != 0 : v == 0) ? "Disabled" : "Enabled",
 				  av_opt_is_set_to_default_by_name(ctx_option, option, AV_OPT_SEARCH_CHILDREN) > 0 ? " <Default>" : "");
 	}
 }
 
-void tools::print_av_option_int(AVCodecContext* ctx_codec, const char* option, std::string text, std::string suffix)
+void tools::print_av_option_int(AVCodecContext* ctx_codec, const char* option, std::string_view text,
+								std::string_view suffix)
 {
 	print_av_option_int(ctx_codec, ctx_codec, option, text, suffix);
 }
 
-void tools::print_av_option_int(AVCodecContext* ctx_codec, void* ctx_option, const char* option, std::string text,
-								std::string suffix)
+void tools::print_av_option_int(AVCodecContext* ctx_codec, void* ctx_option, const char* option, std::string_view text,
+								std::string_view suffix)
 {
 	int64_t v          = 0;
 	bool    is_default = av_opt_is_set_to_default_by_name(ctx_option, option, AV_OPT_SEARCH_CHILDREN) > 0;
 	if (int err = av_opt_get_int(ctx_option, option, AV_OPT_SEARCH_CHILDREN, &v); err != 0) {
 		if (is_default) {
-			DLOG_INFO("[%s] %s: <Default>", ctx_codec->codec->name, text.c_str());
+			DLOG_INFO("[%s] %s: <Default>", ctx_codec->codec->name, text.data());
 		} else {
-			DLOG_INFO("[%s] %s: <Error: %s>", ctx_codec->codec->name, text.c_str(),
+			DLOG_INFO("[%s] %s: <Error: %s>", ctx_codec->codec->name, text.data(),
 					  streamfx::ffmpeg::tools::get_error_description(err));
 		}
 	} else {
-		DLOG_INFO("[%s] %s: %" PRId64 " %s%s", ctx_codec->codec->name, text.c_str(), v, suffix.c_str(),
+		DLOG_INFO("[%s] %s: %" PRId64 " %s%s", ctx_codec->codec->name, text.data(), v, suffix.data(),
 				  is_default ? " <Default>" : "");
 	}
 }
 
-void tools::print_av_option_string(AVCodecContext* ctx_codec, const char* option, std::string text,
+void tools::print_av_option_string(AVCodecContext* ctx_codec, const char* option, std::string_view text,
 								   std::function<std::string(int64_t)> decoder)
 {
 	print_av_option_string(ctx_codec, ctx_codec, option, text, decoder);
 }
 
-void tools::print_av_option_string(AVCodecContext* ctx_codec, void* ctx_option, const char* option, std::string text,
-								   std::function<std::string(int64_t)> decoder)
+void tools::print_av_option_string(AVCodecContext* ctx_codec, void* ctx_option, const char* option,
+								   std::string_view text, std::function<std::string(int64_t)> decoder)
 {
 	int64_t v = 0;
 	if (int err = av_opt_get_int(ctx_option, option, AV_OPT_SEARCH_CHILDREN, &v); err != 0) {
-		DLOG_INFO("[%s] %s: <Error: %s>", ctx_codec->codec->name, text.c_str(),
+		DLOG_INFO("[%s] %s: <Error: %s>", ctx_codec->codec->name, text.data(),
 				  streamfx::ffmpeg::tools::get_error_description(err));
 	} else {
 		std::string name = "<Unknown>";
 		if (decoder)
 			name = decoder(v);
-		DLOG_INFO("[%s] %s: %s%s", ctx_codec->codec->name, text.c_str(), name.c_str(),
+		DLOG_INFO("[%s] %s: %s%s", ctx_codec->codec->name, text.data(), name.c_str(),
 				  av_opt_is_set_to_default_by_name(ctx_option, option, AV_OPT_SEARCH_CHILDREN) > 0 ? " <Default>" : "");
 	}
 }

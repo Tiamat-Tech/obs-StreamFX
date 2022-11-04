@@ -19,13 +19,16 @@
 // SOFTWARE.
 
 #pragma once
+#include "util/util-curl.hpp"
+#include "util/util-event.hpp"
+#include "util/util-threadpool.hpp"
+
+#include "warning-disable.hpp"
 #include <atomic>
 #include <chrono>
 #include <map>
 #include <nlohmann/json.hpp>
-#include "util/util-curl.hpp"
-#include "util/util-event.hpp"
-#include "util/util-threadpool.hpp"
+#include "warning-enable.hpp"
 
 namespace streamfx {
 	enum class version_stage : uint8_t {
@@ -79,7 +82,7 @@ namespace streamfx {
 		bool                                  _dirty;
 
 		private:
-		void task(streamfx::util::threadpool_data_t);
+		void task(streamfx::util::threadpool::task_data_t);
 
 		bool can_check();
 

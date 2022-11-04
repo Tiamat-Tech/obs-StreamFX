@@ -36,8 +36,9 @@ gs_color_format format_from_depth(streamfx::gfx::lut::color_depth depth)
 	case streamfx::gfx::lut::color_depth::_14:
 	case streamfx::gfx::lut::color_depth::_16:
 		return gs_color_format::GS_RGBA16;
+	default:
+		return GS_RGBA32F;
 	}
-	return GS_RGBA32F;
 }
 
 streamfx::gfx::lut::producer::producer()
@@ -47,7 +48,7 @@ streamfx::gfx::lut::producer::producer()
 		throw std::runtime_error("Unable to get LUT producer effect.");
 }
 
-streamfx::gfx::lut::producer::~producer() {}
+streamfx::gfx::lut::producer::~producer() = default;
 
 std::shared_ptr<streamfx::obs::gs::texture> streamfx::gfx::lut::producer::produce(streamfx::gfx::lut::color_depth depth)
 {

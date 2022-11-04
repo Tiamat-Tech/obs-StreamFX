@@ -18,16 +18,27 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+//--------------------------------------------------------------------------------//
+// THIS FEATURE IS DEPRECATED. SUBMITTED PATCHES WILL BE REJECTED.
+//--------------------------------------------------------------------------------//
+
 #pragma once
 #include "common.hpp"
-#include <memory>
-#include <queue>
 #include "encoders/codecs/av1.hpp"
 #include "obs/obs-encoder-factory.hpp"
 #include "util/util-library.hpp"
 #include "util/util-profiler.hpp"
 
+#include "warning-disable.hpp"
+#include <memory>
+#include <queue>
+#include "warning-enable.hpp"
+
+extern "C" {
+#include "warning-disable.hpp"
 #include <aom/aomcx.h>
+#include "warning-enable.hpp"
+};
 
 namespace streamfx::encoder::aom::av1 {
 	class aom_av1_factory;

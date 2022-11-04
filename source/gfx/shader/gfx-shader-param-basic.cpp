@@ -17,10 +17,13 @@
 
 #include "gfx-shader-param-basic.hpp"
 #include "strings.hpp"
+
+#include "warning-disable.hpp"
 #include <algorithm>
 #include <map>
 #include <sstream>
 #include <stdexcept>
+#include "warning-enable.hpp"
 
 static const std::string_view _annotation_field_type      = "field_type";
 static const std::string_view _annotation_suffix          = "suffix";
@@ -31,7 +34,8 @@ static const std::string_view _annotation_scale           = "scale";
 static const std::string_view _annotation_enum_entry      = "enum_%zu";
 static const std::string_view _annotation_enum_entry_name = "enum_%zu_name";
 
-inline bool get_annotation_string(streamfx::obs::gs::effect_parameter param, std::string anno_name, std::string& out)
+inline bool get_annotation_string(streamfx::obs::gs::effect_parameter param, std::string_view anno_name,
+								  std::string& out)
 {
 	if (!param)
 		return false;
@@ -46,7 +50,7 @@ inline bool get_annotation_string(streamfx::obs::gs::effect_parameter param, std
 	return false;
 }
 
-inline bool get_annotation_float(streamfx::obs::gs::effect_parameter param, std::string anno_name, float_t& out)
+inline bool get_annotation_float(streamfx::obs::gs::effect_parameter param, std::string_view anno_name, float_t& out)
 {
 	if (!param) {
 		return false;
@@ -60,7 +64,7 @@ inline bool get_annotation_float(streamfx::obs::gs::effect_parameter param, std:
 	return false;
 }
 
-streamfx::gfx::shader::basic_field_type streamfx::gfx::shader::get_field_type_from_string(std::string v)
+streamfx::gfx::shader::basic_field_type streamfx::gfx::shader::get_field_type_from_string(std::string_view v)
 {
 	std::map<std::string, basic_field_type> matches = {
 		{"input", basic_field_type::Input},
@@ -69,7 +73,7 @@ streamfx::gfx::shader::basic_field_type streamfx::gfx::shader::get_field_type_fr
 		{"enumeration", basic_field_type::Enum},
 	};
 
-	auto fnd = matches.find(v);
+	auto fnd = matches.find(v.data());
 	if (fnd != matches.end())
 		return fnd->second;
 

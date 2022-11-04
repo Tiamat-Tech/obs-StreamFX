@@ -19,10 +19,20 @@
 
 #include "filter-transform.hpp"
 #include "strings.hpp"
-#include <algorithm>
-#include <stdexcept>
 #include "obs/gs/gs-helper.hpp"
 #include "util/util-logging.hpp"
+
+#include "warning-disable.hpp"
+#include <algorithm>
+#include <stdexcept>
+#include "warning-enable.hpp"
+
+// OBS
+#include "warning-disable.hpp"
+#include <graphics/graphics.h>
+#include <graphics/matrix4.h>
+#include <util/platform.h>
+#include "warning-enable.hpp"
 
 #ifdef _DEBUG
 #define ST_PREFIX "<%s> "
@@ -36,18 +46,6 @@
 #define D_LOG_WARNING(...) P_LOG_WARN(ST_PREFIX __VA_ARGS__)
 #define D_LOG_INFO(...) P_LOG_INFO(ST_PREFIX __VA_ARGS__)
 #define D_LOG_DEBUG(...) P_LOG_DEBUG(ST_PREFIX __VA_ARGS__)
-#endif
-
-// OBS
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4201)
-#endif
-#include <graphics/graphics.h>
-#include <graphics/matrix4.h>
-#include <util/platform.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
 #endif
 
 #define ST_I18N "Filter.Transform"
@@ -110,8 +108,8 @@ enum RotationOrder : int64_t {
 };
 
 transform_instance::transform_instance(obs_data_t* data, obs_source_t* context)
-	: obs::source_instance(data, context), _camera_mode(), _camera_fov(), _standard_effect(), _transform_effect(),
-	  _sampler(), _params(), _corners(), _cache_rendered(), _mipmap_enabled(), _source_rendered(), _source_size(),
+	: obs::source_instance(data, context), _camera_mode(), _camera_fov(), _params(), _corners(), _standard_effect(),
+	  _transform_effect(), _sampler(), _cache_rendered(), _mipmap_enabled(), _source_rendered(), _source_size(),
 	  _update_mesh(true)
 {
 	{
@@ -636,28 +634,30 @@ void transform_factory::get_defaults2(obs_data_t* settings)
 }
 
 static bool modified_camera_mode(obs_properties_t* pr, obs_property_t*, obs_data_t* d) noexcept
-try {
-	auto mode            = static_cast<transform_mode>(obs_data_get_int(d, ST_KEY_CAMERA_MODE));
-	bool is_camera       = mode != transform_mode::CORNER_PIN;
-	bool is_perspective  = (mode == transform_mode::PERSPECTIVE) && is_camera;
-	bool is_orthographic = (mode == transform_mode::ORTHOGRAPHIC) && is_camera;
+{
+	try {
+		auto mode            = static_cast<transform_mode>(obs_data_get_int(d, ST_KEY_CAMERA_MODE));
+		bool is_camera       = mode != transform_mode::CORNER_PIN;
+		bool is_perspective  = (mode == transform_mode::PERSPECTIVE) && is_camera;
+		bool is_orthographic = (mode == transform_mode::ORTHOGRAPHIC) && is_camera;
 
-	obs_property_set_visible(obs_properties_get(pr, ST_KEY_CAMERA_FIELDOFVIEW), is_perspective);
-	obs_property_set_visible(obs_properties_get(pr, ST_I18N_POSITION), is_camera);
-	obs_property_set_visible(obs_properties_get(pr, ST_KEY_POSITION_Z), is_perspective);
-	obs_property_set_visible(obs_properties_get(pr, ST_I18N_ROTATION), is_camera);
-	obs_property_set_visible(obs_properties_get(pr, ST_I18N_SCALE), is_camera);
-	obs_property_set_visible(obs_properties_get(pr, ST_I18N_SHEAR), is_camera);
-	obs_property_set_visible(obs_properties_get(pr, ST_KEY_ROTATION_ORDER), is_camera);
-	obs_property_set_visible(obs_properties_get(pr, ST_I18N_CORNERS), !is_camera);
+		obs_property_set_visible(obs_properties_get(pr, ST_KEY_CAMERA_FIELDOFVIEW), is_perspective);
+		obs_property_set_visible(obs_properties_get(pr, ST_I18N_POSITION), is_camera);
+		obs_property_set_visible(obs_properties_get(pr, ST_KEY_POSITION_Z), is_perspective);
+		obs_property_set_visible(obs_properties_get(pr, ST_I18N_ROTATION), is_camera);
+		obs_property_set_visible(obs_properties_get(pr, ST_I18N_SCALE), is_camera);
+		obs_property_set_visible(obs_properties_get(pr, ST_I18N_SHEAR), is_camera);
+		obs_property_set_visible(obs_properties_get(pr, ST_KEY_ROTATION_ORDER), is_camera);
+		obs_property_set_visible(obs_properties_get(pr, ST_I18N_CORNERS), !is_camera);
 
-	return true;
-} catch (const std::exception& ex) {
-	DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
-	return true;
-} catch (...) {
-	DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
-	return true;
+		return true;
+	} catch (const std::exception& ex) {
+		DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
+		return true;
+	} catch (...) {
+		DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
+		return true;
+	}
 }
 
 obs_properties_t* transform_factory::get_properties2(transform_instance* data)
@@ -705,7 +705,7 @@ obs_properties_t* transform_factory::get_properties2(transform_instance* data)
 				{ST_KEY_POSITION_Y, "Y"},
 				{ST_KEY_POSITION_Z, "Z"},
 			};
-			for (auto opt : opts) {
+			for (const auto& opt : opts) {
 				auto p = obs_properties_add_float(grp, opt.first.c_str(), D_TRANSLATE(opt.second.c_str()),
 												  std::numeric_limits<float>::lowest(),
 												  std::numeric_limits<float>::max(), 0.01);
@@ -721,7 +721,7 @@ obs_properties_t* transform_factory::get_properties2(transform_instance* data)
 				{ST_KEY_ROTATION_Y, D_TRANSLATE(ST_I18N_ROTATION ".Y")},
 				{ST_KEY_ROTATION_Z, D_TRANSLATE(ST_I18N_ROTATION ".Z")},
 			};
-			for (auto opt : opts) {
+			for (const auto& opt : opts) {
 				auto p = obs_properties_add_float_slider(grp, opt.first.c_str(), D_TRANSLATE(opt.second.c_str()),
 														 -180.0, 180.0, 0.01);
 				obs_property_float_set_suffix(p, "° Deg");
@@ -736,7 +736,7 @@ obs_properties_t* transform_factory::get_properties2(transform_instance* data)
 				{ST_KEY_SCALE_X, "X"},
 				{ST_KEY_SCALE_Y, "Y"},
 			};
-			for (auto opt : opts) {
+			for (const auto& opt : opts) {
 				auto p = obs_properties_add_float_slider(grp, opt.first.c_str(), opt.second.c_str(), -1000, 1000, 0.01);
 				obs_property_float_set_suffix(p, "%");
 			}
@@ -750,7 +750,7 @@ obs_properties_t* transform_factory::get_properties2(transform_instance* data)
 				{ST_KEY_SHEAR_X, "X"},
 				{ST_KEY_SHEAR_Y, "Y"},
 			};
-			for (auto opt : opts) {
+			for (const auto& opt : opts) {
 				auto p =
 					obs_properties_add_float_slider(grp, opt.first.c_str(), opt.second.c_str(), -200.0, 200.0, 0.01);
 				obs_property_float_set_suffix(p, "%");
@@ -856,28 +856,32 @@ obs_properties_t* transform_factory::get_properties2(transform_instance* data)
 
 #ifdef ENABLE_FRONTEND
 bool transform_factory::on_manual_open(obs_properties_t* props, obs_property_t* property, void* data)
-try {
-	streamfx::open_url(HELP_URL);
-	return false;
-} catch (const std::exception& ex) {
-	D_LOG_ERROR("Failed to open manual due to error: %s", ex.what());
-	return false;
-} catch (...) {
-	D_LOG_ERROR("Failed to open manual due to unknown error.", "");
-	return false;
+{
+	try {
+		streamfx::open_url(HELP_URL);
+		return false;
+	} catch (const std::exception& ex) {
+		D_LOG_ERROR("Failed to open manual due to error: %s", ex.what());
+		return false;
+	} catch (...) {
+		D_LOG_ERROR("Failed to open manual due to unknown error.", "");
+		return false;
+	}
 }
 #endif
 
 std::shared_ptr<transform_factory> _filter_transform_factory_instance = nullptr;
 
 void transform_factory::initialize()
-try {
-	if (!_filter_transform_factory_instance)
-		_filter_transform_factory_instance = std::make_shared<transform_factory>();
-} catch (const std::exception& ex) {
-	D_LOG_ERROR("Failed to initialize due to error: %s", ex.what());
-} catch (...) {
-	D_LOG_ERROR("Failed to initialize due to unknown error.", "");
+{
+	try {
+		if (!_filter_transform_factory_instance)
+			_filter_transform_factory_instance = std::make_shared<transform_factory>();
+	} catch (const std::exception& ex) {
+		D_LOG_ERROR("Failed to initialize due to error: %s", ex.what());
+	} catch (...) {
+		D_LOG_ERROR("Failed to initialize due to unknown error.", "");
+	}
 }
 
 void transform_factory::finalize()

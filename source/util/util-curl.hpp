@@ -19,18 +19,19 @@
 // SOFTWARE.
 
 #pragma once
+#include "warning-disable.hpp"
 #include <cinttypes>
 #include <cstring>
 #include <functional>
 #include <map>
 #include <string>
 #include <vector>
+#include "warning-enable.hpp"
 
 extern "C" {
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
+#include "warning-disable.hpp"
 #include <curl/curl.h>
+#include "warning-enable.hpp"
 }
 
 namespace streamfx::util {
@@ -110,7 +111,7 @@ namespace streamfx::util {
 
 		void clear_headers();
 
-		void clear_header(std::string header);
+		void clear_header(std::string_view header);
 
 		void set_header(std::string header, std::string value);
 

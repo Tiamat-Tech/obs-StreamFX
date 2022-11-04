@@ -18,10 +18,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+//--------------------------------------------------------------------------------//
+// THIS FEATURE IS DEPRECATED. SUBMITTED PATCHES WILL BE REJECTED.
+//--------------------------------------------------------------------------------//
+
 #include "encoder-aom-av1.hpp"
+#include "util/util-logging.hpp"
+
+#include "warning-disable.hpp"
 #include <filesystem>
 #include <thread>
-#include "util/util-logging.hpp"
+#include "warning-enable.hpp"
 
 #ifdef _DEBUG
 #define ST_PREFIX "<%s> "
@@ -40,6 +47,7 @@
 #define ST_I18N "Encoder.AOM.AV1"
 
 // Preset
+#define ST_I18N_DEPRECATED ST_I18N ".Deprecated"
 #define ST_I18N_ENCODER ST_I18N ".Encoder"
 #define ST_I18N_ENCODER_USAGE ST_I18N_ENCODER ".Usage"
 #define ST_I18N_ENCODER_USAGE_GOODQUALITY ST_I18N_ENCODER_USAGE ".GoodQuality"
@@ -353,7 +361,7 @@ aom_av1_instance::aom_av1_instance(obs_data_t* settings, obs_encoder_t* self, bo
 				_settings.color_format = AOM_IMG_FMT_I444;
 				break;
 			default:
-				throw std::runtime_error("Something went wrong figuring out our color format.");
+				throw std::runtime_error("Color Format is unknown.");
 			}
 
 			// Color Space
@@ -373,6 +381,8 @@ aom_av1_instance::aom_av1_instance(obs_data_t* settings, obs_encoder_t* self, bo
 				_settings.color_trc       = AOM_CICP_TC_SRGB;
 				_settings.color_matrix    = AOM_CICP_MC_BT_709;
 				break;
+			default:
+				throw std::runtime_error("Color Space is unknown.");
 			}
 
 			// Color Range
@@ -383,6 +393,8 @@ aom_av1_instance::aom_av1_instance(obs_data_t* settings, obs_encoder_t* self, bo
 			case VIDEO_RANGE_PARTIAL:
 				_settings.color_range = AOM_CR_STUDIO_RANGE;
 				break;
+			default:
+				throw std::runtime_error("Color Range is unknown.");
 			}
 
 			// Monochrome
@@ -415,7 +427,7 @@ aom_av1_instance::aom_av1_instance(obs_data_t* settings, obs_encoder_t* self, bo
 			if (auto threads = obs_data_get_int(settings, ST_KEY_ADVANCED_THREADS); threads > 0) {
 				_settings.threads = static_cast<int8_t>(threads);
 			} else {
-				_settings.threads = std::thread::hardware_concurrency();
+				_settings.threads = static_cast<int8_t>(std::thread::hardware_concurrency());
 			}
 			_settings.rowmultithreading =
 				static_cast<int8_t>(obs_data_get_int(settings, ST_KEY_ADVANCED_ROWMULTITHREADING));
@@ -659,16 +671,16 @@ bool aom_av1_instance::update(obs_data_t* settings)
 		}
 
 		{ // Rate Control
-			_settings.rc_bitrate = static_cast<int32_t>(obs_data_get_int(settings, ST_KEY_RATECONTROL_LIMITS_BITRATE));
+			_settings.rc_bitrate = static_cast<int8_t>(obs_data_get_int(settings, ST_KEY_RATECONTROL_LIMITS_BITRATE));
 			_settings.rc_bitrate_overshoot =
 				static_cast<int32_t>(obs_data_get_int(settings, ST_KEY_RATECONTROL_LIMITS_BITRATE_UNDERSHOOT));
 			_settings.rc_bitrate_undershoot =
 				static_cast<int32_t>(obs_data_get_int(settings, ST_KEY_RATECONTROL_LIMITS_BITRATE_OVERSHOOT));
-			_settings.rc_quality = static_cast<int32_t>(obs_data_get_int(settings, ST_KEY_RATECONTROL_LIMITS_QUALITY));
+			_settings.rc_quality = static_cast<int8_t>(obs_data_get_int(settings, ST_KEY_RATECONTROL_LIMITS_QUALITY));
 			_settings.rc_quantizer_min =
-				static_cast<int32_t>(obs_data_get_int(settings, ST_KEY_RATECONTROL_LIMITS_QUANTIZER_MINIMUM));
+				static_cast<int8_t>(obs_data_get_int(settings, ST_KEY_RATECONTROL_LIMITS_QUANTIZER_MINIMUM));
 			_settings.rc_quantizer_max =
-				static_cast<int32_t>(obs_data_get_int(settings, ST_KEY_RATECONTROL_LIMITS_QUANTIZER_MAXIMUM));
+				static_cast<int8_t>(obs_data_get_int(settings, ST_KEY_RATECONTROL_LIMITS_QUANTIZER_MAXIMUM));
 			_settings.rc_buffer_ms = static_cast<int32_t>(obs_data_get_int(settings, ST_KEY_RATECONTROL_BUFFER_SIZE));
 			_settings.rc_buffer_initial_ms =
 				static_cast<int32_t>(obs_data_get_int(settings, ST_KEY_RATECONTROL_BUFFER_SIZE_INITIAL));
@@ -682,12 +694,12 @@ bool aom_av1_instance::update(obs_data_t* settings)
 
 			_settings.kf_mode = AOM_KF_AUTO;
 			if (is_seconds) {
-				_settings.kf_distance_max = static_cast<unsigned int>(
+				_settings.kf_distance_max = static_cast<int32_t>(
 					std::lround(obs_data_get_double(settings, ST_KEY_KEYFRAMES_INTERVAL_SECONDS)
 								* static_cast<double>(obsFPSnum) / static_cast<double>(obsFPSden)));
 			} else {
 				_settings.kf_distance_max =
-					static_cast<unsigned int>(obs_data_get_int(settings, ST_KEY_KEYFRAMES_INTERVAL_FRAMES));
+					static_cast<int32_t>(obs_data_get_int(settings, ST_KEY_KEYFRAMES_INTERVAL_FRAMES));
 			}
 			_settings.kf_distance_min = _settings.kf_distance_max;
 		}
@@ -714,15 +726,15 @@ bool aom_av1_instance::update(obs_data_t* settings)
 			_cfg.g_h = _settings.height;
 
 			// Time Base (Rate is inverted Time Base)
-			_cfg.g_timebase.num = _settings.fps.den;
-			_cfg.g_timebase.den = _settings.fps.num;
+			_cfg.g_timebase.num = static_cast<int>(_settings.fps.den);
+			_cfg.g_timebase.den = static_cast<int>(_settings.fps.num);
 
 			// !INFO: Whenever OBS decides to support anything but 8-bits, let me know.
 			_cfg.g_bit_depth       = AOM_BITS_8;
 			_cfg.g_input_bit_depth = AOM_BITS_8;
 
 			// Monochrome color
-			_cfg.monochrome = _settings.monochrome ? 1 : 0;
+			_cfg.monochrome = _settings.monochrome ? 1u : 0u;
 		}
 
 		{ // Encoder
@@ -1035,6 +1047,8 @@ void aom_av1_instance::get_video_info(struct video_scale_info* info)
 		D_LOG_WARNING("Color-format '%s' is not supported, forcing 'I444'...", obs_video_format_to_string(format));
 		info->format = VIDEO_FORMAT_I444;
 		break;
+	default:
+		throw std::runtime_error("Color Format is unknown.");
 	}
 
 	// Fix up color space.
@@ -1263,6 +1277,7 @@ aom_av1_factory::aom_av1_factory()
 	_info.type  = obs_encoder_type::OBS_ENCODER_VIDEO;
 	_info.codec = "av1";
 	_info.caps  = OBS_ENCODER_CAP_DYN_BITRATE;
+	_info.caps |= OBS_ENCODER_CAP_DEPRECATED;
 
 	finish_setup();
 }
@@ -1272,12 +1287,14 @@ aom_av1_factory::~aom_av1_factory() {}
 std::shared_ptr<aom_av1_factory> _aom_av1_factory_instance = nullptr;
 
 void aom_av1_factory::initialize()
-try {
-	if (!_aom_av1_factory_instance) {
-		_aom_av1_factory_instance = std::make_shared<aom_av1_factory>();
+{
+	try {
+		if (!_aom_av1_factory_instance) {
+			_aom_av1_factory_instance = std::make_shared<aom_av1_factory>();
+		}
+	} catch (std::exception const& ex) {
+		D_LOG_ERROR("Failed to initialize AOM AV1 encoder: %s", ex.what());
 	}
-} catch (std::exception const& ex) {
-	D_LOG_ERROR("Failed to initialize AOM AV1 encoder: %s", ex.what());
 }
 
 void aom_av1_factory::finalize()
@@ -1343,87 +1360,99 @@ void aom_av1_factory::get_defaults2(obs_data_t* settings)
 }
 
 static bool modified_usage(obs_properties_t* props, obs_property_t*, obs_data_t* settings) noexcept
-try {
-	bool is_all_intra = false;
-	if (obs_data_get_int(settings, ST_KEY_ENCODER_USAGE) == AOM_USAGE_ALL_INTRA) {
-		is_all_intra = true;
+{
+	try {
+		bool is_all_intra = false;
+		if (obs_data_get_int(settings, ST_KEY_ENCODER_USAGE) == AOM_USAGE_ALL_INTRA) {
+			is_all_intra = true;
+		}
+
+		// All-Intra does not support these.
+		obs_property_set_visible(obs_properties_get(props, ST_KEY_RATECONTROL_LOOKAHEAD), !is_all_intra);
+		obs_property_set_visible(obs_properties_get(props, ST_I18N_KEYFRAMES), !is_all_intra);
+
+		return true;
+	} catch (const std::exception& ex) {
+		DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
+		return false;
+	} catch (...) {
+		DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
+		return false;
 	}
-
-	// All-Intra does not support these.
-	obs_property_set_visible(obs_properties_get(props, ST_KEY_RATECONTROL_LOOKAHEAD), !is_all_intra);
-	obs_property_set_visible(obs_properties_get(props, ST_I18N_KEYFRAMES), !is_all_intra);
-
-	return true;
-} catch (const std::exception& ex) {
-	DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
-	return false;
-} catch (...) {
-	DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
-	return false;
 }
 
 static bool modified_ratecontrol_mode(obs_properties_t* props, obs_property_t*, obs_data_t* settings) noexcept
-try {
-	bool is_bitrate_visible        = false;
-	bool is_overundershoot_visible = false;
-	bool is_quality_visible        = false;
+{
+	try {
+		bool is_bitrate_visible        = false;
+		bool is_overundershoot_visible = false;
+		bool is_quality_visible        = false;
 
-	// Fix rate control mode selection if ALL_INTRA is selected.
-	if (obs_data_get_int(settings, ST_KEY_ENCODER_USAGE) == AOM_USAGE_ALL_INTRA) {
-		obs_data_set_int(settings, ST_KEY_RATECONTROL_MODE, static_cast<long long>(aom_rc_mode::AOM_Q));
-	}
-
-	{ // Based on the Rate Control Mode, show and hide options.
-		auto mode = static_cast<aom_rc_mode>(obs_data_get_int(settings, ST_KEY_RATECONTROL_MODE));
-		if (mode == AOM_CBR) {
-			is_bitrate_visible        = true;
-			is_overundershoot_visible = true;
-		} else if (mode == AOM_VBR) {
-			is_bitrate_visible        = true;
-			is_overundershoot_visible = true;
-		} else if (mode == AOM_CQ) {
-			is_bitrate_visible        = true;
-			is_overundershoot_visible = true;
-			is_quality_visible        = true;
-		} else if (mode == AOM_Q) {
-			is_quality_visible = true;
+		// Fix rate control mode selection if ALL_INTRA is selected.
+		if (obs_data_get_int(settings, ST_KEY_ENCODER_USAGE) == AOM_USAGE_ALL_INTRA) {
+			obs_data_set_int(settings, ST_KEY_RATECONTROL_MODE, static_cast<long long>(aom_rc_mode::AOM_Q));
 		}
 
-		obs_property_set_visible(obs_properties_get(props, ST_KEY_RATECONTROL_LIMITS_BITRATE), is_bitrate_visible);
-		obs_property_set_visible(obs_properties_get(props, ST_KEY_RATECONTROL_LIMITS_BITRATE_UNDERSHOOT),
-								 is_overundershoot_visible);
-		obs_property_set_visible(obs_properties_get(props, ST_KEY_RATECONTROL_LIMITS_BITRATE_OVERSHOOT),
-								 is_overundershoot_visible);
+		{ // Based on the Rate Control Mode, show and hide options.
+			auto mode = static_cast<aom_rc_mode>(obs_data_get_int(settings, ST_KEY_RATECONTROL_MODE));
+			if (mode == AOM_CBR) {
+				is_bitrate_visible        = true;
+				is_overundershoot_visible = true;
+			} else if (mode == AOM_VBR) {
+				is_bitrate_visible        = true;
+				is_overundershoot_visible = true;
+			} else if (mode == AOM_CQ) {
+				is_bitrate_visible        = true;
+				is_overundershoot_visible = true;
+				is_quality_visible        = true;
+			} else if (mode == AOM_Q) {
+				is_quality_visible = true;
+			}
+
+			obs_property_set_visible(obs_properties_get(props, ST_KEY_RATECONTROL_LIMITS_BITRATE), is_bitrate_visible);
+			obs_property_set_visible(obs_properties_get(props, ST_KEY_RATECONTROL_LIMITS_BITRATE_UNDERSHOOT),
+									 is_overundershoot_visible);
+			obs_property_set_visible(obs_properties_get(props, ST_KEY_RATECONTROL_LIMITS_BITRATE_OVERSHOOT),
+									 is_overundershoot_visible);
 #ifdef AOM_CTRL_AOME_SET_CQ_LEVEL
-		obs_property_set_visible(obs_properties_get(props, ST_KEY_RATECONTROL_LIMITS_QUALITY), is_quality_visible);
+			obs_property_set_visible(obs_properties_get(props, ST_KEY_RATECONTROL_LIMITS_QUALITY), is_quality_visible);
 #endif
+		}
+		return true;
+	} catch (const std::exception& ex) {
+		DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
+		return false;
+	} catch (...) {
+		DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
+		return false;
 	}
-	return true;
-} catch (const std::exception& ex) {
-	DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
-	return false;
-} catch (...) {
-	DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
-	return false;
 }
 
 static bool modified_keyframes(obs_properties_t* props, obs_property_t*, obs_data_t* settings) noexcept
-try {
-	bool is_seconds = obs_data_get_int(settings, ST_KEY_KEYFRAMES_INTERVALTYPE) == 0;
-	obs_property_set_visible(obs_properties_get(props, ST_KEY_KEYFRAMES_INTERVAL_FRAMES), !is_seconds);
-	obs_property_set_visible(obs_properties_get(props, ST_KEY_KEYFRAMES_INTERVAL_SECONDS), is_seconds);
-	return true;
-} catch (const std::exception& ex) {
-	DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
-	return false;
-} catch (...) {
-	DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
-	return false;
+{
+	try {
+		bool is_seconds = obs_data_get_int(settings, ST_KEY_KEYFRAMES_INTERVALTYPE) == 0;
+		obs_property_set_visible(obs_properties_get(props, ST_KEY_KEYFRAMES_INTERVAL_FRAMES), !is_seconds);
+		obs_property_set_visible(obs_properties_get(props, ST_KEY_KEYFRAMES_INTERVAL_SECONDS), is_seconds);
+		return true;
+	} catch (const std::exception& ex) {
+		DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
+		return false;
+	} catch (...) {
+		DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
+		return false;
+	}
 }
 
 obs_properties_t* aom_av1_factory::get_properties2(instance_t* data)
 {
 	obs_properties_t* props = obs_properties_create();
+
+	{
+		auto p = obs_properties_add_text(props, "[[deprecated]]", D_TRANSLATE(ST_I18N_DEPRECATED), OBS_TEXT_INFO);
+		obs_property_text_set_info_type(p, OBS_TEXT_INFO_WARNING);
+		obs_property_text_set_info_word_wrap(p, true);
+	}
 
 #ifdef ENABLE_FRONTEND
 	{

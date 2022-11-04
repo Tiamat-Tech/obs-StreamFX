@@ -19,10 +19,13 @@
 // SOFTWARE.
 
 #include "filter-denoising.hpp"
-#include <algorithm>
 #include "obs/gs/gs-helper.hpp"
 #include "plugin.hpp"
 #include "util/util-logging.hpp"
+
+#include "warning-disable.hpp"
+#include <algorithm>
+#include "warning-enable.hpp"
 
 #ifdef _DEBUG
 #define ST_PREFIX "<%s> "
@@ -87,8 +90,8 @@ std::string streamfx::filter::denoising::string(denoising_provider provider)
 denoising_instance::denoising_instance(obs_data_t* data, obs_source_t* self)
 	: obs::source_instance(data, self),
 
-	  _size(1, 1), _provider_ready(false), _provider(denoising_provider::INVALID), _provider_lock(), _provider_task(),
-	  _input(), _output()
+	  _size(1, 1), _provider(denoising_provider::INVALID), _provider_ui(denoising_provider::INVALID),
+	  _provider_ready(false), _provider_lock(), _provider_task(), _input(), _output()
 {
 	D_LOG_DEBUG("Initializating... (Addr: 0x%" PRIuPTR ")", this);
 
@@ -406,7 +409,7 @@ void streamfx::filter::denoising::denoising_instance::switch_provider(denoising_
 		std::bind(&denoising_instance::task_switch_provider, this, std::placeholders::_1), spd);
 }
 
-void streamfx::filter::denoising::denoising_instance::task_switch_provider(util::threadpool_data_t data)
+void streamfx::filter::denoising::denoising_instance::task_switch_provider(util::threadpool::task_data_t data)
 {
 	std::shared_ptr<switch_provider_data_t> spd = std::static_pointer_cast<switch_provider_data_t>(data);
 
@@ -572,14 +575,16 @@ void denoising_factory::get_defaults2(obs_data_t* data)
 }
 
 static bool modified_provider(obs_properties_t* props, obs_property_t*, obs_data_t* settings) noexcept
-try {
-	return true;
-} catch (const std::exception& ex) {
-	DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
-	return false;
-} catch (...) {
-	DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
-	return false;
+{
+	try {
+		return true;
+	} catch (const std::exception& ex) {
+		DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
+		return false;
+	} catch (...) {
+		DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
+		return false;
+	}
 }
 
 obs_properties_t* denoising_factory::get_properties2(denoising_instance* data)
@@ -649,13 +654,15 @@ denoising_provider streamfx::filter::denoising::denoising_factory::find_ideal_pr
 std::shared_ptr<denoising_factory> _video_denoising_factory_instance = nullptr;
 
 void denoising_factory::initialize()
-try {
-	if (!_video_denoising_factory_instance)
-		_video_denoising_factory_instance = std::make_shared<denoising_factory>();
-} catch (const std::exception& ex) {
-	D_LOG_ERROR("Failed to initialize due to error: %s", ex.what());
-} catch (...) {
-	D_LOG_ERROR("Failed to initialize due to unknown error.", "");
+{
+	try {
+		if (!_video_denoising_factory_instance)
+			_video_denoising_factory_instance = std::make_shared<denoising_factory>();
+	} catch (const std::exception& ex) {
+		D_LOG_ERROR("Failed to initialize due to error: %s", ex.what());
+	} catch (...) {
+		D_LOG_ERROR("Failed to initialize due to unknown error.", "");
+	}
 }
 
 void denoising_factory::finalize()

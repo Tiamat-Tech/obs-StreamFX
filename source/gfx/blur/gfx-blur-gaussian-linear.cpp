@@ -16,18 +16,12 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 
 #include "gfx-blur-gaussian-linear.hpp"
-#include <stdexcept>
+#include "common.hpp"
 #include "obs/gs/gs-helper.hpp"
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4201)
-#endif
-#include <obs.h>
-#include <obs-module.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-disable.hpp"
+#include <stdexcept>
+#include "warning-enable.hpp"
 
 // FIXME: This breaks when MAX_KERNEL_SIZE is changed, due to the way the Gaussian
 //  function first goes up at the point, and then once we pass the critical point
@@ -115,7 +109,6 @@ bool streamfx::gfx::blur::gaussian_linear_factory::is_type_supported(::streamfx:
 {
 	switch (v) {
 	case ::streamfx::gfx::blur::type::Area:
-		return true;
 	case ::streamfx::gfx::blur::type::Directional:
 		return true;
 	default:
@@ -251,7 +244,7 @@ streamfx::gfx::blur::gaussian_linear::~gaussian_linear() {}
 
 void streamfx::gfx::blur::gaussian_linear::set_input(std::shared_ptr<::streamfx::obs::gs::texture> texture)
 {
-	_input_texture = texture;
+	_input_texture = std::move(texture);
 }
 
 ::streamfx::gfx::blur::type streamfx::gfx::blur::gaussian_linear::get_type()

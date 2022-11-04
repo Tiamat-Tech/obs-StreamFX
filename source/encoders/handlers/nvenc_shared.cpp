@@ -24,10 +24,9 @@
 #include "ffmpeg/tools.hpp"
 
 extern "C" {
-#pragma warning(push)
-#pragma warning(disable : 4244)
+#include "warning-disable.hpp"
 #include <libavutil/opt.h>
-#pragma warning(pop)
+#include "warning-enable.hpp"
 }
 
 #define ST_I18N_PRESET "Encoder.FFmpeg.NVENC.Preset"
@@ -202,12 +201,12 @@ void nvenc::get_defaults(obs_data_t* settings, const AVCodec*, AVCodecContext*)
 static bool modified_ratecontrol(obs_properties_t* props, obs_property_t*, obs_data_t* settings) noexcept
 {
 	// Decode the name into useful flags.
-	auto value              = obs_data_get_string(settings, ST_KEY_RATECONTROL_MODE);
-	bool have_bitrate       = false;
-	bool have_bitrate_range = false;
-	bool have_quality       = false;
-	bool have_qp_limits     = false;
-	bool have_qp            = false;
+	const char* value              = obs_data_get_string(settings, ST_KEY_RATECONTROL_MODE);
+	bool        have_bitrate       = false;
+	bool        have_bitrate_range = false;
+	bool        have_quality       = false;
+	bool        have_qp_limits     = false;
+	bool        have_qp            = false;
 	if (value == std::string_view("cbr")) {
 		have_bitrate = true;
 	} else if (value == std::string_view("vbr")) {
@@ -256,7 +255,7 @@ void nvenc::get_properties_pre(obs_properties_t* props, const AVCodec*, const AV
 										 OBS_COMBO_FORMAT_STRING);
 		streamfx::ffmpeg::tools::avoption_list_add_entries(context->priv_data, "preset", [&p](const AVOption* opt) {
 			char buffer[1024];
-			snprintf(buffer, sizeof(buffer), "%s.%s\0", ST_I18N_PRESET, opt->name);
+			snprintf(buffer, sizeof(buffer), "%s.%s", ST_I18N_PRESET, opt->name);
 			obs_property_list_add_string(p, D_TRANSLATE(buffer), opt->name);
 		});
 	}
@@ -266,7 +265,7 @@ void nvenc::get_properties_pre(obs_properties_t* props, const AVCodec*, const AV
 										 OBS_COMBO_FORMAT_STRING);
 		streamfx::ffmpeg::tools::avoption_list_add_entries(context->priv_data, "tune", [&p](const AVOption* opt) {
 			char buffer[1024];
-			snprintf(buffer, sizeof(buffer), "%s.%s\0", ST_I18N_TUNE, opt->name);
+			snprintf(buffer, sizeof(buffer), "%s.%s", ST_I18N_TUNE, opt->name);
 			obs_property_list_add_string(p, D_TRANSLATE(buffer), opt->name);
 		});
 	}
@@ -293,7 +292,7 @@ void nvenc::get_properties_post(obs_properties_t* props, const AVCodec* codec, c
 					return;
 
 				char buffer[1024];
-				snprintf(buffer, sizeof(buffer), "%s.%s\0", ST_I18N_RATECONTROL_MODE, opt->name);
+				snprintf(buffer, sizeof(buffer), "%s.%s", ST_I18N_RATECONTROL_MODE, opt->name);
 				obs_property_list_add_string(p, D_TRANSLATE(buffer), opt->name);
 			});
 		}
@@ -306,7 +305,7 @@ void nvenc::get_properties_post(obs_properties_t* props, const AVCodec* codec, c
 			streamfx::ffmpeg::tools::avoption_list_add_entries(
 				context->priv_data, "multipass", [&p](const AVOption* opt) {
 					char buffer[1024];
-					snprintf(buffer, sizeof(buffer), "%s.%s\0", ST_I18N_RATECONTROL_MULTIPASS, opt->name);
+					snprintf(buffer, sizeof(buffer), "%s.%s", ST_I18N_RATECONTROL_MULTIPASS, opt->name);
 					obs_property_list_add_string(p, D_TRANSLATE(buffer), opt->name);
 				});
 		} else {
@@ -441,7 +440,7 @@ void nvenc::get_properties_post(obs_properties_t* props, const AVCodec* codec, c
 			streamfx::ffmpeg::tools::avoption_list_add_entries(
 				context->priv_data, "b_ref_mode", [&p](const AVOption* opt) {
 					char buffer[1024];
-					snprintf(buffer, sizeof(buffer), "%s.%s\0", ST_I18N_OTHER_BFRAMEREFERENCEMODE, opt->name);
+					snprintf(buffer, sizeof(buffer), "%s.%s", ST_I18N_OTHER_BFRAMEREFERENCEMODE, opt->name);
 					obs_property_list_add_string(p, D_TRANSLATE(buffer), opt->name);
 				});
 		}
@@ -513,14 +512,14 @@ void nvenc::get_runtime_properties(obs_properties_t* props, const AVCodec*, AVCo
 
 void nvenc::update(obs_data_t* settings, const AVCodec* codec, AVCodecContext* context)
 {
-	if (auto v = obs_data_get_string(settings, ST_KEY_PRESET);
-		!context->internal && (v != nullptr) && (strlen(v) > 0)) {
+	if (const char* v = obs_data_get_string(settings, ST_KEY_PRESET);
+		!context->internal && (v != nullptr) && (v[0] != '\0')) {
 		av_opt_set(context->priv_data, "preset", v, AV_OPT_SEARCH_CHILDREN);
 	}
 
 	{ // Rate Control
-		auto v = obs_data_get_string(settings, ST_KEY_RATECONTROL_MODE);
-		if (!context->internal && (v != nullptr) && (strlen(v) > 0)) {
+		const char* v = obs_data_get_string(settings, ST_KEY_RATECONTROL_MODE);
+		if (!context->internal && (v != nullptr) && (v[0] != '\0')) {
 			av_opt_set(context->priv_data, "rc", v, AV_OPT_SEARCH_CHILDREN);
 		}
 
@@ -572,8 +571,8 @@ void nvenc::update(obs_data_t* settings, const AVCodec* codec, AVCodecContext* c
 		if (!context->internal) {
 			if (streamfx::ffmpeg::tools::avoption_exists(context->priv_data, "multipass")) {
 				// Multi-Pass
-				if (auto v = obs_data_get_string(settings, ST_KEY_RATECONTROL_MULTIPASS);
-					(v != nullptr) && (strlen(v) > 0)) {
+				if (const char* v = obs_data_get_string(settings, ST_KEY_RATECONTROL_MULTIPASS);
+					(v != nullptr) && (v[0] != '\0')) {
 					av_opt_set(context->priv_data, "multipass", v, AV_OPT_SEARCH_CHILDREN);
 					av_opt_set_int(context->priv_data, "2pass", 0, AV_OPT_SEARCH_CHILDREN);
 				}
@@ -717,8 +716,8 @@ void nvenc::update(obs_data_t* settings, const AVCodec* codec, AVCodecContext* c
 			av_opt_set_int(context->priv_data, "weighted_pred", wp, AV_OPT_SEARCH_CHILDREN);
 		}
 
-		if (auto v = obs_data_get_string(settings, ST_KEY_OTHER_BFRAMEREFERENCEMODE);
-			(v != nullptr) && (strlen(v) > 0)) {
+		if (const char* v = obs_data_get_string(settings, ST_KEY_OTHER_BFRAMEREFERENCEMODE);
+			(v != nullptr) && (v[0] != '\0')) {
 			av_opt_set(context->priv_data, "b_ref_mode", v, AV_OPT_SEARCH_CHILDREN);
 		}
 

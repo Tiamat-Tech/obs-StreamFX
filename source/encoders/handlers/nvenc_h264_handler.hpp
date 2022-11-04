@@ -23,10 +23,9 @@
 #include "handler.hpp"
 
 extern "C" {
-#pragma warning(push)
-#pragma warning(disable : 4244)
+#include "warning-disable.hpp"
 #include <libavcodec/avcodec.h>
-#pragma warning(pop)
+#include "warning-enable.hpp"
 }
 
 namespace streamfx::encoder::ffmpeg::handler {

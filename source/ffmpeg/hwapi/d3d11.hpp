@@ -22,17 +22,12 @@
 #pragma once
 #include "base.hpp"
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4191 4242 4244 4365 4777 4986 5039 5204)
-#endif
+#include "warning-disable.hpp"
 #include <atlutil.h>
 #include <d3d11.h>
 #include <d3d11_1.h>
 #include <dxgi.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-enable.hpp"
 
 namespace streamfx::ffmpeg::hwapi {
 	class d3d11 : public streamfx::ffmpeg::hwapi::base {
@@ -57,7 +52,7 @@ namespace streamfx::ffmpeg::hwapi {
 
 		virtual std::list<hwapi::device> enumerate_adapters() override;
 
-		virtual std::shared_ptr<hwapi::instance> create(hwapi::device target) override;
+		virtual std::shared_ptr<hwapi::instance> create(const hwapi::device& target) override;
 
 		virtual std::shared_ptr<hwapi::instance> create_from_obs() override;
 	};
@@ -67,7 +62,7 @@ namespace streamfx::ffmpeg::hwapi {
 		ATL::CComPtr<ID3D11DeviceContext> _context;
 
 		public:
-		d3d11_instance(ATL::CComPtr<ID3D11Device> device, ATL::CComPtr<ID3D11DeviceContext> context);
+		d3d11_instance(ATL::CComPtr<ID3D11Device> device);
 		virtual ~d3d11_instance();
 
 		virtual AVBufferRef* create_device_context() override;

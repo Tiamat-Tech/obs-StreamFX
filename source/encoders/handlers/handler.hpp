@@ -24,10 +24,9 @@
 #include "ffmpeg/hwapi/base.hpp"
 
 extern "C" {
-#pragma warning(push)
-#pragma warning(disable : 4242 4244 4365)
+#include "warning-disable.hpp"
 #include <libavcodec/avcodec.h>
-#pragma warning(pop)
+#include "warning-enable.hpp"
 }
 
 namespace streamfx::encoder::ffmpeg {
@@ -81,7 +80,8 @@ namespace streamfx::encoder::ffmpeg {
 			virtual void override_colorformat(AVPixelFormat& target_format, obs_data_t* settings, const AVCodec* codec,
 											  AVCodecContext* context){};
 
-			virtual void process_avpacket(AVPacket& packet, const AVCodec* codec, AVCodecContext* context){};
+			virtual void process_avpacket(std::shared_ptr<AVPacket> packet, const AVCodec* codec,
+										  AVCodecContext* context){};
 		};
 	} // namespace handler
 } // namespace streamfx::encoder::ffmpeg

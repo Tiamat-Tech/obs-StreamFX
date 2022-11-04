@@ -19,12 +19,15 @@
 // SOFTWARE.
 
 #include "nvidia-vfx-superresolution.hpp"
-#include <cmath>
-#include <utility>
-#include <vector>
 #include "obs/gs/gs-helper.hpp"
 #include "util/util-logging.hpp"
 #include "util/utility.hpp"
+
+#include "warning-disable.hpp"
+#include <cmath>
+#include <utility>
+#include <vector>
+#include "warning-enable.hpp"
 
 #ifdef _DEBUG
 #define ST_PREFIX "<%s> "
@@ -58,7 +61,7 @@ static float find_closest_scale_factor(float factor)
 
 static size_t find_closest_scale_factor_index(float factor)
 {
-	std::pair<size_t, float> minimal = {0.f, std::numeric_limits<float>::max()};
+	std::pair<size_t, float> minimal = {0, std::numeric_limits<float>::max()};
 	for (size_t idx = 0; idx < supported_scale_factors.size(); idx++) {
 		float delta = supported_scale_factors[idx];
 		float value = abs(delta - factor);
@@ -114,7 +117,7 @@ void streamfx::nvidia::vfx::superresolution::set_strength(float strength)
 		_dirty = true;
 
 	// Update Effect
-	uint32_t value = (_strength >= .5f) ? 1 : 0;
+	uint32_t value = (_strength >= .5f) ? 1u : 0u;
 	auto     gctx  = ::streamfx::obs::gs::context();
 	auto     cctx  = ::streamfx::nvidia::cuda::obs::get()->get_context()->enter();
 	if (auto res = set(::streamfx::nvidia::vfx::PARAMETER_STRENGTH, value);
@@ -134,7 +137,7 @@ void streamfx::nvidia::vfx::superresolution::set_scale(float scale)
 	scale = std::clamp<float>(scale, 1., 4.);
 
 	// Match to nearest scale.
-	double factor = find_closest_scale_factor(scale);
+	float factor = static_cast<float>(find_closest_scale_factor(scale));
 
 	// If anything was changed, flag the effect as dirty.
 	if (!::streamfx::util::math::is_close<float>(_scale, factor, 0.01f))
@@ -198,8 +201,8 @@ void streamfx::nvidia::vfx::superresolution::size(std::pair<uint32_t, uint32_t> 
 	}
 
 	// Calculate Output Size.
-	output_size.first  = static_cast<uint32_t>(std::lround(input_size.first * _scale));
-	output_size.second = static_cast<uint32_t>(std::lround(input_size.second * _scale));
+	output_size.first  = static_cast<uint32_t>(std::lround(static_cast<float>(input_size.first) * _scale));
+	output_size.second = static_cast<uint32_t>(std::lround(static_cast<float>(input_size.second) * _scale));
 
 	// Verify that this is a valid scale factor.
 	float width_mul  = (static_cast<float>(output_size.first) / static_cast<float>(input_size.first));

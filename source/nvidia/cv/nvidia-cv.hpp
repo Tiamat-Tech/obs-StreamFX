@@ -19,19 +19,17 @@
 // SOFTWARE.
 
 #pragma once
-#include <cinttypes>
 #include "nvidia/cuda/nvidia-cuda.hpp"
 #include "util/util-bitmask.hpp"
 #include "util/util-library.hpp"
 
+#include "warning-disable.hpp"
+#include <cinttypes>
 #ifdef WIN32
-#pragma warning(push)
-#pragma warning(disable : 4365)
-#pragma warning(disable : 5204)
 #include <d3d11.h>
 #include <dxgi.h>
-#pragma warning(pop)
 #endif
+#include "warning-enable.hpp"
 
 #define NVCVI_DEFINE_FUNCTION(name, ...)                                   \
 	private:                                                               \
@@ -293,7 +291,7 @@ namespace streamfx::nvidia::cv {
 
 		public:
 		exception(const char* what, result code) : std::runtime_error(what), _code(code) {}
-		exception(const std::string& what, result code) : std::runtime_error(what), _code(code) {}
+		exception(std::string_view what, result code) : std::runtime_error(what.data()), _code(code) {}
 		~exception(){};
 
 		inline result code()

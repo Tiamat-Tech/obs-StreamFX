@@ -17,14 +17,17 @@
 
 #include "gfx-shader-param-texture.hpp"
 #include "strings.hpp"
-#include <map>
-#include <sstream>
-#include <stdexcept>
 #include "gfx-shader.hpp"
 #include "gfx/gfx-debug.hpp"
 #include "obs/gs/gs-helper.hpp"
 #include "obs/obs-source-tracker.hpp"
 #include "util/util-platform.hpp"
+
+#include "warning-disable.hpp"
+#include <map>
+#include <sstream>
+#include <stdexcept>
+#include "warning-enable.hpp"
 
 // TODO:
 // - FFT Audio Conversion
@@ -52,7 +55,7 @@ static constexpr std::string_view _annotation_default         = "default";
 static constexpr std::string_view _annotation_enum_entry      = "enum_%zu";
 static constexpr std::string_view _annotation_enum_entry_name = "enum_%zu_name";
 
-streamfx::gfx::shader::texture_field_type streamfx::gfx::shader::get_texture_field_type_from_string(std::string v)
+streamfx::gfx::shader::texture_field_type streamfx::gfx::shader::get_texture_field_type_from_string(std::string_view v)
 {
 	std::map<std::string, texture_field_type> matches = {
 		{"input", texture_field_type::Input},
@@ -60,7 +63,7 @@ streamfx::gfx::shader::texture_field_type streamfx::gfx::shader::get_texture_fie
 		{"enumeration", texture_field_type::Enum},
 	};
 
-	auto fnd = matches.find(v);
+	auto fnd = matches.find(v.data());
 	if (fnd != matches.end())
 		return fnd->second;
 
@@ -82,15 +85,15 @@ streamfx::gfx::shader::texture_parameter::texture_parameter(streamfx::gfx::shade
 		_keys.reserve(3);
 		{ // Type
 			snprintf(string_buffer, sizeof(string_buffer), "%s%s", get_key().data(), ST_KEY_TYPE);
-			_keys.push_back(std::string(string_buffer));
+			_keys.emplace_back(string_buffer);
 		}
 		{ // File
 			snprintf(string_buffer, sizeof(string_buffer), "%s%s", get_key().data(), ST_KEY_FILE);
-			_keys.push_back(std::string(string_buffer));
+			_keys.emplace_back(string_buffer);
 		}
 		{ // Source
 			snprintf(string_buffer, sizeof(string_buffer), "%s%s", get_key().data(), ST_KEY_SOURCE);
-			_keys.push_back(std::string(string_buffer));
+			_keys.emplace_back(string_buffer);
 		}
 	}
 
@@ -233,9 +236,8 @@ void streamfx::gfx::shader::texture_parameter::properties(obs_properties_t* prop
 	}
 }
 
-std::filesystem::path make_absolute_to(std::filesystem::path origin, std::filesystem::path destination)
+std::filesystem::path make_absolute_to(const std::filesystem::path& origin, const std::filesystem::path& destination)
 {
-	auto destination_dir = std::filesystem::absolute(destination.remove_filename());
 	return std::filesystem::absolute(destination / origin);
 }
 
@@ -263,7 +265,7 @@ void streamfx::gfx::shader::texture_parameter::update(obs_data_t* settings)
 			_dirty_ts  = std::chrono::high_resolution_clock::now() - std::chrono::milliseconds(1);
 		}
 	} else if (_type == texture_type::Source) {
-		auto source_name = obs_data_get_string(settings, _keys[2].c_str());
+		const char* source_name = obs_data_get_string(settings, _keys[2].c_str());
 
 		if (_source_name != source_name) {
 			_source_name = source_name;
@@ -283,7 +285,7 @@ void streamfx::gfx::shader::texture_parameter::assign()
 		// Reload or Reacquire everything necessary.
 		try {
 			// Remove now unused references.
-			_source.release();
+			_source.reset();
 			_source_child.reset();
 			_source_active.reset();
 			_source_visible.reset();
@@ -321,14 +323,14 @@ void streamfx::gfx::shader::texture_parameter::assign()
 
 				// Propagate all of this into the storage.
 				_source_rendertarget = rt;
-				_source_visible      = visible;
-				_source_active       = active;
+				_source_visible      = std::move(visible);
+				_source_active       = std::move(active);
 				_source_child        = child;
 				_source              = source;
 			}
 
 			_dirty = false;
-		} catch (const std::exception& ex) {
+		} catch (const std::exception&) {
 			_dirty_ts = std::chrono::high_resolution_clock::now() + std::chrono::milliseconds(5000);
 		} catch (...) {
 			_dirty_ts = std::chrono::high_resolution_clock::now() + std::chrono::milliseconds(5000);
@@ -337,14 +339,15 @@ void streamfx::gfx::shader::texture_parameter::assign()
 
 	// If this is a source and active or visible, capture it.
 	if ((_type == texture_type::Source) && (_active || _visible) && _source_rendertarget) {
+		auto source = _source.lock();
 #ifdef ENABLE_PROFILING
 		::streamfx::obs::gs::debug_marker profiler1{::streamfx::obs::gs::debug_color_capture, "Parameter '%s'",
 													get_key().data()};
 		::streamfx::obs::gs::debug_marker profiler2{::streamfx::obs::gs::debug_color_capture, "Capture '%s'",
-													obs_source_get_name(_source.get())};
+													source.name().data()};
 #endif
-		uint32_t width  = obs_source_get_width(_source.get());
-		uint32_t height = obs_source_get_height(_source.get());
+		uint32_t width  = source.width();
+		uint32_t height = source.height();
 
 		auto op = _source_rendertarget->render(width, height);
 
@@ -358,7 +361,7 @@ void streamfx::gfx::shader::texture_parameter::assign()
 
 		gs_enable_color(true, true, true, true);
 
-		obs_source_video_render(_source.get());
+		obs_source_video_render(source.get());
 
 		gs_blend_state_pop();
 		gs_matrix_pop();
@@ -389,8 +392,9 @@ void streamfx::gfx::shader::texture_parameter::visible(bool visible)
 {
 	_visible = visible;
 	if (visible) {
-		if (_source) {
-			_source_visible = ::streamfx::obs::source_showing_reference::add_showing_reference(_source);
+		auto source = _source.lock();
+		if (source) {
+			_source_visible = ::streamfx::obs::source_showing_reference::add_showing_reference(source);
 		}
 	} else {
 		_source_visible.reset();
@@ -401,8 +405,9 @@ void streamfx::gfx::shader::texture_parameter::active(bool active)
 {
 	_active = active;
 	if (active) {
-		if (_source) {
-			_source_active = ::streamfx::obs::source_active_reference::add_active_reference(_source);
+		auto source = _source.lock();
+		if (source) {
+			_source_active = ::streamfx::obs::source_active_reference::add_active_reference(source);
 		}
 	} else {
 		_source_active.reset();

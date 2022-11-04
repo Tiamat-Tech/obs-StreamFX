@@ -19,12 +19,15 @@
 // SOFTWARE.
 
 #include "nvidia-vfx.hpp"
-#include <filesystem>
-#include <mutex>
 #include "nvidia/cuda/nvidia-cuda-obs.hpp"
 #include "obs/gs/gs-helper.hpp"
 #include "util/util-logging.hpp"
 #include "util/util-platform.hpp"
+
+#include "warning-disable.hpp"
+#include <filesystem>
+#include <mutex>
+#include "warning-enable.hpp"
 
 #ifdef _DEBUG
 #define ST_PREFIX "<%s> "
@@ -41,9 +44,11 @@
 #endif
 
 #if defined(WIN32)
+#include "warning-disable.hpp"
 #include <KnownFolders.h>
 #include <ShlObj.h>
 #include <Windows.h>
+#include "warning-enable.hpp"
 
 #define LIB_NAME "NVVideoEffects.dll"
 #else

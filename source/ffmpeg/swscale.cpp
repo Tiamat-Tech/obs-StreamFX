@@ -20,11 +20,14 @@
 // SOFTWARE.
 
 #include "swscale.hpp"
+
+#include "warning-disable.hpp"
 #include <stdexcept>
+#include "warning-enable.hpp"
 
 using namespace streamfx::ffmpeg;
 
-swscale::swscale() {}
+swscale::swscale() = default;
 
 swscale::~swscale()
 {

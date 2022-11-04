@@ -19,19 +19,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+// THIS FEATURE IS DEPRECATED. SUBMITTED PATCHES WILL BE REJECTED.
+
 #pragma once
 #include "common.hpp"
 #include "handler.hpp"
 
 extern "C" {
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4242 4244 4365)
-#endif
+#include "warning-disable.hpp"
 #include <libavcodec/avcodec.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-enable.hpp"
 }
 
 namespace streamfx::encoder::ffmpeg::handler::amf {

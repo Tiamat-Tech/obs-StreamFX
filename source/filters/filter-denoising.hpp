@@ -19,15 +19,18 @@
 // SOFTWARE.
 
 #pragma once
-#include <atomic>
-#include <memory>
-#include <mutex>
 #include "obs/gs/gs-effect.hpp"
 #include "obs/gs/gs-rendertarget.hpp"
 #include "obs/gs/gs-texture.hpp"
 #include "obs/obs-source-factory.hpp"
 #include "plugin.hpp"
 #include "util/util-threadpool.hpp"
+
+#include "warning-disable.hpp"
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include "warning-enable.hpp"
 
 #ifdef ENABLE_FILTER_DENOISING_NVIDIA
 #include "nvidia/vfx/nvidia-vfx-denoising.hpp"
@@ -82,7 +85,7 @@ namespace streamfx::filter::denoising {
 
 		private:
 		void switch_provider(denoising_provider provider);
-		void task_switch_provider(util::threadpool_data_t data);
+		void task_switch_provider(util::threadpool::task_data_t data);
 
 #ifdef ENABLE_FILTER_DENOISING_NVIDIA
 		void nvvfx_denoising_load();

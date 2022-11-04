@@ -20,6 +20,7 @@
 // SOFTWARE.
 
 #include "nvenc_h264_handler.hpp"
+#include "common.hpp"
 #include "strings.hpp"
 #include "../codecs/h264.hpp"
 #include "../encoder-ffmpeg.hpp"
@@ -28,15 +29,9 @@
 #include "plugin.hpp"
 
 extern "C" {
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4242 4244 4365)
-#endif
-#include <obs-module.h>
+#include "warning-disable.hpp"
 #include <libavutil/opt.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-enable.hpp"
 }
 
 #define ST_KEY_PROFILE "H264.Profile"
@@ -94,10 +89,10 @@ void nvenc_h264_handler::update(obs_data_t* settings, const AVCodec* codec, AVCo
 	nvenc::update(settings, codec, context);
 
 	if (!context->internal) {
-		if (auto v = obs_data_get_string(settings, ST_KEY_PROFILE); v && (strlen(v) > 0)) {
+		if (const char* v = obs_data_get_string(settings, ST_KEY_PROFILE); v && (v[0] != '\0')) {
 			av_opt_set(context->priv_data, "profile", v, AV_OPT_SEARCH_CHILDREN);
 		}
-		if (auto v = obs_data_get_string(settings, ST_KEY_LEVEL); v && (strlen(v) > 0)) {
+		if (const char* v = obs_data_get_string(settings, ST_KEY_LEVEL); v && (v[0] != '\0')) {
 			av_opt_set(context->priv_data, "level", v, AV_OPT_SEARCH_CHILDREN);
 		}
 	}
@@ -143,7 +138,7 @@ void nvenc_h264_handler::get_encoder_properties(obs_properties_t* props, const A
 			streamfx::ffmpeg::tools::avoption_list_add_entries(
 				context->priv_data, "profile", [&p](const AVOption* opt) {
 					char buffer[1024];
-					snprintf(buffer, sizeof(buffer), "%s.%s\0", S_CODEC_H264_PROFILE, opt->name);
+					snprintf(buffer, sizeof(buffer), "%s.%s", S_CODEC_H264_PROFILE, opt->name);
 					obs_property_list_add_string(p, D_TRANSLATE(buffer), opt->name);
 				});
 		}

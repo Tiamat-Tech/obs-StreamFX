@@ -16,20 +16,14 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 
 #include "gfx-blur-dual-filtering.hpp"
-#include <algorithm>
-#include <stdexcept>
+#include "common.hpp"
 #include "obs/gs/gs-helper.hpp"
 #include "plugin.hpp"
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4201)
-#endif
-#include <obs.h>
-#include <obs-module.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-disable.hpp"
+#include <algorithm>
+#include <stdexcept>
+#include "warning-enable.hpp"
 
 // Dual Filtering Blur
 //
@@ -202,7 +196,7 @@ streamfx::gfx::blur::dual_filtering::~dual_filtering() {}
 
 void streamfx::gfx::blur::dual_filtering::set_input(std::shared_ptr<::streamfx::obs::gs::texture> texture)
 {
-	_input_texture = texture;
+	_input_texture = std::move(texture);
 }
 
 ::streamfx::gfx::blur::type streamfx::gfx::blur::dual_filtering::get_type()
@@ -279,8 +273,9 @@ std::shared_ptr<::streamfx::obs::gs::texture> streamfx::gfx::blur::dual_filterin
 
 		// Apply
 		effect.get_parameter("pImage").set_texture(tex);
-		effect.get_parameter("pImageSize").set_float2(float_t(owidth), float_t(oheight));
-		effect.get_parameter("pImageTexel").set_float2(0.5f / owidth, 0.5f / oheight);
+		effect.get_parameter("pImageSize").set_float2(static_cast<float>(owidth), static_cast<float>(oheight));
+		effect.get_parameter("pImageTexel")
+			.set_float2(0.5f / static_cast<float>(owidth), 0.5f / static_cast<float>(oheight));
 
 		{
 			auto op = _rts[n]->render(owidth, oheight);
@@ -308,8 +303,9 @@ std::shared_ptr<::streamfx::obs::gs::texture> streamfx::gfx::blur::dual_filterin
 
 		// Apply
 		effect.get_parameter("pImage").set_texture(tex);
-		effect.get_parameter("pImageSize").set_float2(float_t(iwidth), float_t(iheight));
-		effect.get_parameter("pImageTexel").set_float2(0.5f / iwidth, 0.5f / iheight);
+		effect.get_parameter("pImageSize").set_float2(static_cast<float>(iwidth), static_cast<float>(iheight));
+		effect.get_parameter("pImageTexel")
+			.set_float2(0.5f / static_cast<float>(iwidth), 0.5f / static_cast<float>(iheight));
 
 		{
 			auto op = _rts[n - 1]->render(owidth, oheight);

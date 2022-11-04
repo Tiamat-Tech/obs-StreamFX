@@ -1,5 +1,5 @@
 // FFMPEG Video Encoder Integration for OBS Studio
-// Copyright (c) 2019 Michael Fabian Dirks <info@xaymar.com>
+// Copyright (c) 2019-2022 Michael Fabian Dirks <info@xaymar.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,10 +23,9 @@
 #include "handler.hpp"
 
 extern "C" {
-#pragma warning(push)
-#pragma warning(disable : 4244)
+#include "warning-disable.hpp"
 #include <libavcodec/avcodec.h>
-#pragma warning(pop)
+#include "warning-enable.hpp"
 }
 
 namespace streamfx::encoder::ffmpeg::handler {
@@ -45,6 +44,8 @@ namespace streamfx::encoder::ffmpeg::handler {
 		public /*support tests*/:
 		bool has_pixel_format_support(ffmpeg_factory* instance) override;
 
+		bool has_keyframe_support(ffmpeg_factory* instance) override;
+
 		public /*settings*/:
 		void get_properties(obs_properties_t* props, const AVCodec* codec, AVCodecContext* context,
 							bool hw_encode) override;
@@ -56,7 +57,5 @@ namespace streamfx::encoder::ffmpeg::handler {
 		public /*instance*/:
 		void override_colorformat(AVPixelFormat& target_format, obs_data_t* settings, const AVCodec* codec,
 								  AVCodecContext* context) override;
-
-		void process_avpacket(AVPacket& packet, const AVCodec* codec, AVCodecContext* context) override;
 	};
 } // namespace streamfx::encoder::ffmpeg::handler

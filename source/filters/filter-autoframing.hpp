@@ -18,10 +18,6 @@
  */
 
 #pragma once
-#include <atomic>
-#include <list>
-#include <memory>
-#include <mutex>
 #include "gfx/gfx-debug.hpp"
 #include "obs/gs/gs-rendertarget.hpp"
 #include "obs/gs/gs-texture.hpp"
@@ -30,6 +26,13 @@
 #include "plugin.hpp"
 #include "util/util-threadpool.hpp"
 #include "util/utility.hpp"
+
+#include "warning-disable.hpp"
+#include <atomic>
+#include <list>
+#include <memory>
+#include <mutex>
+#include "warning-enable.hpp"
 
 #ifdef ENABLE_FILTER_AUTOFRAMING_NVIDIA
 #include "nvidia/ar/nvidia-ar-facedetection.hpp"
@@ -145,7 +148,7 @@ namespace streamfx::filter::autoframing {
 		void tracking_tick(float seconds);
 
 		void switch_provider(tracking_provider provider);
-		void task_switch_provider(util::threadpool_data_t data);
+		void task_switch_provider(util::threadpool::task_data_t data);
 
 #ifdef ENABLE_FILTER_AUTOFRAMING_NVIDIA
 		void nvar_facedetection_load();

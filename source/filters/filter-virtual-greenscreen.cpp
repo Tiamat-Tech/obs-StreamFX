@@ -19,10 +19,13 @@
 // SOFTWARE.
 
 #include "filter-virtual-greenscreen.hpp"
-#include <algorithm>
 #include "obs/gs/gs-helper.hpp"
 #include "plugin.hpp"
 #include "util/util-logging.hpp"
+
+#include "warning-disable.hpp"
+#include <algorithm>
+#include "warning-enable.hpp"
 
 #ifdef _DEBUG
 #define ST_PREFIX "<%s> "
@@ -325,6 +328,8 @@ void virtual_greenscreen_instance::video_render(gs_effect_t* effect)
 				nvvfxgs_process(_output_color, _output_alpha);
 				break;
 #endif
+			default:
+				break;
 			}
 		} catch (...) {
 			obs_source_skip_video_filter(_self);
@@ -401,7 +406,7 @@ void streamfx::filter::virtual_greenscreen::virtual_greenscreen_instance::switch
 }
 
 void streamfx::filter::virtual_greenscreen::virtual_greenscreen_instance::task_switch_provider(
-	util::threadpool_data_t data)
+	util::threadpool::task_data_t data)
 {
 	std::shared_ptr<switch_provider_data_t> spd = std::static_pointer_cast<switch_provider_data_t>(data);
 
@@ -574,14 +579,16 @@ void virtual_greenscreen_factory::get_defaults2(obs_data_t* data)
 }
 
 static bool modified_provider(obs_properties_t* props, obs_property_t*, obs_data_t* settings) noexcept
-try {
-	return true;
-} catch (const std::exception& ex) {
-	DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
-	return false;
-} catch (...) {
-	DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
-	return false;
+{
+	try {
+		return true;
+	} catch (const std::exception& ex) {
+		DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
+		return false;
+	} catch (...) {
+		DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
+		return false;
+	}
 }
 
 obs_properties_t* virtual_greenscreen_factory::get_properties2(virtual_greenscreen_instance* data)
@@ -619,15 +626,17 @@ obs_properties_t* virtual_greenscreen_factory::get_properties2(virtual_greenscre
 
 #ifdef ENABLE_FRONTEND
 bool virtual_greenscreen_factory::on_manual_open(obs_properties_t* props, obs_property_t* property, void* data)
-try {
-	streamfx::open_url(HELP_URL);
-	return false;
-} catch (const std::exception& ex) {
-	D_LOG_ERROR("Failed to open manual due to error: %s", ex.what());
-	return false;
-} catch (...) {
-	D_LOG_ERROR("Failed to open manual due to unknown error.", "");
-	return false;
+{
+	try {
+		streamfx::open_url(HELP_URL);
+		return false;
+	} catch (const std::exception& ex) {
+		D_LOG_ERROR("Failed to open manual due to error: %s", ex.what());
+		return false;
+	} catch (...) {
+		D_LOG_ERROR("Failed to open manual due to unknown error.", "");
+		return false;
+	}
 }
 #endif
 
@@ -658,13 +667,15 @@ virtual_greenscreen_provider streamfx::filter::virtual_greenscreen::virtual_gree
 std::shared_ptr<virtual_greenscreen_factory> _video_superresolution_factory_instance = nullptr;
 
 void virtual_greenscreen_factory::initialize()
-try {
-	if (!_video_superresolution_factory_instance)
-		_video_superresolution_factory_instance = std::make_shared<virtual_greenscreen_factory>();
-} catch (const std::exception& ex) {
-	D_LOG_ERROR("Failed to initialize due to error: %s", ex.what());
-} catch (...) {
-	D_LOG_ERROR("Failed to initialize due to unknown error.", "");
+{
+	try {
+		if (!_video_superresolution_factory_instance)
+			_video_superresolution_factory_instance = std::make_shared<virtual_greenscreen_factory>();
+	} catch (const std::exception& ex) {
+		D_LOG_ERROR("Failed to initialize due to error: %s", ex.what());
+	} catch (...) {
+		D_LOG_ERROR("Failed to initialize due to unknown error.", "");
+	}
 }
 
 void virtual_greenscreen_factory::finalize()

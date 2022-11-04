@@ -183,8 +183,8 @@ autoframing_instance::autoframing_instance(obs_data_t* data, obs_source_t* self)
 
 	  _track_mode(tracking_mode::SOLO), _track_frequency(1),
 
-	  _motion_prediction(0.0), _motion_smoothing(0.0), _motion_smoothing_kalman_pnc(1.),
-	  _motion_smoothing_kalman_mnc(1.),
+	  _motion_smoothing(0.0), _motion_smoothing_kalman_pnc(1.), _motion_smoothing_kalman_mnc(1.),
+	  _motion_prediction(0.0),
 
 	  _frame_stability(0.), _frame_stability_kalman(1.), _frame_padding_prc(), _frame_padding(), _frame_offset_prc(),
 	  _frame_offset(), _frame_aspect_ratio(0.0),
@@ -212,7 +212,7 @@ autoframing_instance::autoframing_instance(obs_data_t* data, obs_source_t* self)
 			std::make_shared<::streamfx::obs::gs::effect>(::streamfx::data_file_path("effects/standard.effect"));
 
 		// Create the Vertex Buffer for rendering.
-		_vb = std::make_shared<::streamfx::obs::gs::vertex_buffer>(4u, 1u);
+		_vb = std::make_shared<::streamfx::obs::gs::vertex_buffer>(uint32_t{4}, uint8_t{1});
 		vec3_set(_vb->at(0).position, 0, 0, 0);
 		vec3_set(_vb->at(1).position, 1, 0, 0);
 		vec3_set(_vb->at(2).position, 0, 1, 0);
@@ -246,7 +246,7 @@ void autoframing_instance::update(obs_data_t* data)
 	// Tracking
 	_track_mode = static_cast<tracking_mode>(obs_data_get_int(data, ST_KEY_TRACKING_MODE));
 	{
-		if (auto text = obs_data_get_string(data, ST_KEY_TRACKING_FREQUENCY); text != nullptr) {
+		if (const char* text = obs_data_get_string(data, ST_KEY_TRACKING_FREQUENCY); text != nullptr) {
 			float value = 0.;
 			if (sscanf(text, "%f", &value) == 1) {
 				if (const char* seconds = strchr(text, 's'); seconds == nullptr) {
@@ -284,7 +284,7 @@ void autoframing_instance::update(obs_data_t* data)
 		_frame_size_y = {_frame_stability_kalman, 1.0f, ST_KALMAN_EEC, _frame_size_y.get()};
 	}
 	{ // Padding
-		if (auto text = obs_data_get_string(data, ST_KEY_FRAMING_PADDING ".X"); text != nullptr) {
+		if (const char* text = obs_data_get_string(data, ST_KEY_FRAMING_PADDING ".X"); text != nullptr) {
 			float value = 0.;
 			if (sscanf(text, "%f", &value) == 1) {
 				if (const char* percent = strchr(text, '%'); percent != nullptr) {
@@ -297,7 +297,7 @@ void autoframing_instance::update(obs_data_t* data)
 			}
 			_frame_padding.x = value;
 		}
-		if (auto text = obs_data_get_string(data, ST_KEY_FRAMING_PADDING ".Y"); text != nullptr) {
+		if (const char* text = obs_data_get_string(data, ST_KEY_FRAMING_PADDING ".Y"); text != nullptr) {
 			float value = 0.;
 			if (sscanf(text, "%f", &value) == 1) {
 				if (const char* percent = strchr(text, '%'); percent != nullptr) {
@@ -312,7 +312,7 @@ void autoframing_instance::update(obs_data_t* data)
 		}
 	}
 	{ // Offset
-		if (auto text = obs_data_get_string(data, ST_KEY_FRAMING_OFFSET ".X"); text != nullptr) {
+		if (const char* text = obs_data_get_string(data, ST_KEY_FRAMING_OFFSET ".X"); text != nullptr) {
 			float value = 0.;
 			if (sscanf(text, "%f", &value) == 1) {
 				if (const char* percent = strchr(text, '%'); percent != nullptr) {
@@ -325,7 +325,7 @@ void autoframing_instance::update(obs_data_t* data)
 			}
 			_frame_offset.x = value;
 		}
-		if (auto text = obs_data_get_string(data, ST_KEY_FRAMING_OFFSET ".Y"); text != nullptr) {
+		if (const char* text = obs_data_get_string(data, ST_KEY_FRAMING_OFFSET ".Y"); text != nullptr) {
 			float value = 0.;
 			if (sscanf(text, "%f", &value) == 1) {
 				if (const char* percent = strchr(text, '%'); percent != nullptr) {
@@ -341,7 +341,7 @@ void autoframing_instance::update(obs_data_t* data)
 	}
 	{ // Aspect Ratio
 		_frame_aspect_ratio = static_cast<float>(_size.first) / static_cast<float>(_size.second);
-		if (auto text = obs_data_get_string(data, ST_KEY_FRAMING_ASPECTRATIO); text != nullptr) {
+		if (const char* text = obs_data_get_string(data, ST_KEY_FRAMING_ASPECTRATIO); text != nullptr) {
 			if (const char* percent = strchr(text, ':'); percent != nullptr) {
 				float left  = 0.;
 				float right = 0.;
@@ -432,9 +432,13 @@ void autoframing_instance::video_tick(float_t seconds)
 		_out_size = _size;
 		if (_frame_aspect_ratio > 0.0) {
 			if (width > height) {
-				_out_size.first = std::lroundf(static_cast<float>(_out_size.second) * _frame_aspect_ratio);
+				_out_size.first =
+					static_cast<uint32_t>(std::lroundf(static_cast<float>(_out_size.second) * _frame_aspect_ratio), 0,
+										  std::numeric_limits<uint32_t>::max());
 			} else {
-				_out_size.second = std::lroundf(static_cast<float>(_out_size.first) * _frame_aspect_ratio);
+				_out_size.second =
+					static_cast<uint32_t>(std::lroundf(static_cast<float>(_out_size.first) * _frame_aspect_ratio), 0,
+										  std::numeric_limits<uint32_t>::max());
 			}
 		}
 	}
@@ -479,7 +483,7 @@ void autoframing_instance::video_render(gs_effect_t* effect)
 			auto op = _input->render(width, height);
 
 			// Set correct projection matrix.
-			gs_ortho(0, width, 0, height, 0, 1);
+			gs_ortho(0, static_cast<float>(width), 0, static_cast<float>(height), 0, 1);
 
 			// Clear the buffer
 			gs_clear(GS_CLEAR_COLOR | GS_CLEAR_DEPTH, &blank, 0, 0);
@@ -893,7 +897,7 @@ void streamfx::filter::autoframing::autoframing_instance::switch_provider(tracki
 		std::bind(&autoframing_instance::task_switch_provider, this, std::placeholders::_1), spd);
 }
 
-void streamfx::filter::autoframing::autoframing_instance::task_switch_provider(util::threadpool_data_t data)
+void streamfx::filter::autoframing::autoframing_instance::task_switch_provider(util::threadpool::task_data_t data)
 {
 	std::shared_ptr<switch_provider_data_t> spd = std::static_pointer_cast<switch_provider_data_t>(data);
 
@@ -982,7 +986,7 @@ void streamfx::filter::autoframing::autoframing_instance::nvar_facedetection_pro
 			// Try and find a match in the current list of tracked elements.
 			std::shared_ptr<track_el> match;
 			float                     match_dst = max_dst;
-			for (auto el : _tracked_elements) {
+			for (const auto& el : _tracked_elements) {
 				// Skip "fresh" elements.
 				if (el->age < 0.00001) {
 					continue;
@@ -1125,14 +1129,16 @@ void autoframing_factory::get_defaults2(obs_data_t* data)
 }
 
 static bool modified_provider(obs_properties_t* props, obs_property_t*, obs_data_t* settings) noexcept
-try {
-	return true;
-} catch (const std::exception& ex) {
-	DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
-	return false;
-} catch (...) {
-	DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
-	return false;
+{
+	try {
+		return true;
+	} catch (const std::exception& ex) {
+		DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
+		return false;
+	} catch (...) {
+		DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
+		return false;
+	}
 }
 
 obs_properties_t* autoframing_factory::get_properties2(autoframing_instance* data)
@@ -1315,13 +1321,15 @@ tracking_provider streamfx::filter::autoframing::autoframing_factory::find_ideal
 std::shared_ptr<autoframing_factory> _filter_autoframing_factory_instance = nullptr;
 
 void autoframing_factory::initialize()
-try {
-	if (!_filter_autoframing_factory_instance)
-		_filter_autoframing_factory_instance = std::make_shared<autoframing_factory>();
-} catch (const std::exception& ex) {
-	D_LOG_ERROR("Failed to initialize due to error: %s", ex.what());
-} catch (...) {
-	D_LOG_ERROR("Failed to initialize due to unknown error.", "");
+{
+	try {
+		if (!_filter_autoframing_factory_instance)
+			_filter_autoframing_factory_instance = std::make_shared<autoframing_factory>();
+	} catch (const std::exception& ex) {
+		D_LOG_ERROR("Failed to initialize due to error: %s", ex.what());
+	} catch (...) {
+		D_LOG_ERROR("Failed to initialize due to unknown error.", "");
+	}
 }
 
 void autoframing_factory::finalize()

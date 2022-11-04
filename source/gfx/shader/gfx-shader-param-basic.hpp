@@ -17,9 +17,12 @@
 
 #pragma once
 #include "common.hpp"
-#include <vector>
 #include "gfx-shader-param.hpp"
 #include "obs/gs/gs-effect-parameter.hpp"
+
+#include "warning-disable.hpp"
+#include <vector>
+#include "warning-enable.hpp"
 
 namespace streamfx::gfx {
 	namespace shader {
@@ -29,7 +32,7 @@ namespace streamfx::gfx {
 			Enum,
 		};
 
-		basic_field_type get_field_type_from_string(std::string v);
+		basic_field_type get_field_type_from_string(std::string_view v);
 
 		struct basic_data {
 			union {

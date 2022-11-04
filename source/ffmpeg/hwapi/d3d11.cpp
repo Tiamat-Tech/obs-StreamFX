@@ -22,19 +22,17 @@
 #ifdef WIN32
 
 #include "d3d11.hpp"
-#include <sstream>
-#include <vector>
 #include "obs/gs/gs-helper.hpp"
 
+#include "warning-disable.hpp"
+#include <sstream>
+#include <vector>
+#include "warning-enable.hpp"
+
 extern "C" {
-#pragma warning(push)
-#pragma warning(disable : 4191)
-#pragma warning(disable : 4242)
-#pragma warning(disable : 4244)
-#pragma warning(disable : 4365)
-#pragma warning(disable : 4986)
+#include "warning-disable.hpp"
 #include <libavutil/hwcontext_d3d11va.h>
-#pragma warning(pop)
+#include "warning-enable.hpp"
 }
 
 using namespace streamfx::ffmpeg::hwapi;
@@ -99,15 +97,14 @@ std::list<device> d3d11::enumerate_adapters()
 		adapters.push_back(dev);
 	}
 
-	return std::move(adapters);
+	return adapters;
 }
 
-std::shared_ptr<instance> d3d11::create(device target)
+std::shared_ptr<instance> d3d11::create(const device& target)
 {
-	std::shared_ptr<d3d11_instance>   inst;
-	ATL::CComPtr<ID3D11Device>        device;
-	ATL::CComPtr<ID3D11DeviceContext> context;
-	IDXGIAdapter1*                    adapter = nullptr;
+	std::shared_ptr<d3d11_instance> inst;
+	ATL::CComPtr<ID3D11Device>      device;
+	IDXGIAdapter1*                  adapter = nullptr;
 
 	// Find the correct "Adapter" (device).
 	IDXGIAdapter1* dxgi_adapter = nullptr;
@@ -127,12 +124,11 @@ std::shared_ptr<instance> d3d11::create(device target)
 													 D3D_FEATURE_LEVEL_11_1};
 
 	if (FAILED(_D3D11CreateDevice(adapter, D3D_DRIVER_TYPE_HARDWARE, NULL, device_flags, feature_levels.data(),
-								  static_cast<UINT>(feature_levels.size()), D3D11_SDK_VERSION, &device, NULL,
-								  &context))) {
+								  static_cast<UINT>(feature_levels.size()), D3D11_SDK_VERSION, &device, NULL, NULL))) {
 		throw std::runtime_error("Failed to create D3D11 device for target.");
 	}
 
-	return std::make_shared<d3d11_instance>(device, context);
+	return std::make_shared<d3d11_instance>(device);
 }
 
 std::shared_ptr<instance> d3d11::create_from_obs()
@@ -145,23 +141,24 @@ std::shared_ptr<instance> d3d11::create_from_obs()
 
 	ATL::CComPtr<ID3D11Device> device =
 		ATL::CComPtr<ID3D11Device>(reinterpret_cast<ID3D11Device*>(gs_get_device_obj()));
-	ATL::CComPtr<ID3D11DeviceContext> context;
-	device->GetImmediateContext(&context);
 
-	return std::make_shared<d3d11_instance>(device, context);
+	return std::make_shared<d3d11_instance>(device);
 }
 
 struct D3D11AVFrame {
 	ATL::CComPtr<ID3D11Texture2D> handle;
 };
 
-d3d11_instance::d3d11_instance(ATL::CComPtr<ID3D11Device> device, ATL::CComPtr<ID3D11DeviceContext> context)
+d3d11_instance::d3d11_instance(ATL::CComPtr<ID3D11Device> device) : _device(device)
 {
-	_device  = device;
-	_context = context;
+	// Acquire immediate rendering context.
+	device->GetImmediateContext(&_context);
 }
 
-d3d11_instance::~d3d11_instance() {}
+d3d11_instance::~d3d11_instance()
+{
+	//_context.Release(); // Automatically performed by ATL::CComPtr.
+}
 
 AVBufferRef* d3d11_instance::create_device_context()
 {
@@ -169,17 +166,18 @@ AVBufferRef* d3d11_instance::create_device_context()
 	if (!dctx_ref)
 		throw std::runtime_error("Failed to allocate AVHWDeviceContext.");
 
-	AVHWDeviceContext*      dctx    = reinterpret_cast<AVHWDeviceContext*>(dctx_ref->data);
-	AVD3D11VADeviceContext* d3d11va = reinterpret_cast<AVD3D11VADeviceContext*>(dctx->hwctx);
+	AVHWDeviceContext*      hwdev        = reinterpret_cast<AVHWDeviceContext*>(dctx_ref->data);
+	AVD3D11VADeviceContext* device_hwctx = reinterpret_cast<AVD3D11VADeviceContext*>(hwdev->hwctx);
 
-	// TODO: Determine if these need an additional reference.
-	d3d11va->device = _device;
-	d3d11va->device->AddRef();
-	d3d11va->device_context = _context;
-	d3d11va->device_context->AddRef();
-	d3d11va->lock   = [](void*) { obs_enter_graphics(); };
-	d3d11va->unlock = [](void*) { obs_leave_graphics(); };
+	// Provide the base device information only.
+	device_hwctx->device = _device;
+	device_hwctx->device->AddRef();
 
+	// And a way to lock/unlock the device.
+	device_hwctx->lock   = [](void*) { obs_enter_graphics(); };
+	device_hwctx->unlock = [](void*) { obs_leave_graphics(); };
+
+	// Then let FFmpeg do the rest for us.
 	int ret = av_hwdevice_ctx_init(dctx_ref);
 	if (ret < 0)
 		throw std::runtime_error("Failed to initialize AVHWDeviceContext.");
@@ -192,10 +190,7 @@ std::shared_ptr<AVFrame> d3d11_instance::allocate_frame(AVBufferRef* frames)
 	auto gctx = streamfx::obs::gs::context();
 
 	// Allocate a frame.
-	auto frame = std::shared_ptr<AVFrame>(av_frame_alloc(), [](AVFrame* frame) {
-		av_frame_unref(frame);
-		av_frame_free(&frame);
-	});
+	auto frame = std::shared_ptr<AVFrame>(av_frame_alloc(), [](AVFrame* frame) { av_frame_free(&frame); });
 
 	// Create the necessary buffers.
 	if (av_hwframe_get_buffer(frames, frame.get(), 0) < 0) {

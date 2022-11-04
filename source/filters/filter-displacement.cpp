@@ -17,12 +17,19 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 */
 
+//--------------------------------------------------------------------------------//
+// THIS FEATURE IS DEPRECATED. SUBMITTED PATCHES WILL BE REJECTED.
+//--------------------------------------------------------------------------------//
+
 #include "filter-displacement.hpp"
 #include "strings.hpp"
-#include <stdexcept>
-#include <sys/stat.h>
 #include "obs/gs/gs-helper.hpp"
 #include "util/util-logging.hpp"
+
+#include "warning-disable.hpp"
+#include <stdexcept>
+#include <sys/stat.h>
+#include "warning-enable.hpp"
 
 #ifdef _DEBUG
 #define ST_PREFIX "<%s> "
@@ -39,6 +46,7 @@
 #endif
 
 #define ST_I18N "Filter.Displacement"
+#define ST_I18N_DEPRECATED ST_I18N ".Deprecated"
 #define ST_I18N_FILE "Filter.Displacement.File"
 #define ST_KEY_FILE "Filter.Displacement.File"
 #define ST_I18N_SCALE "Filter.Displacement.Scale"
@@ -95,7 +103,7 @@ void displacement_instance::update(obs_data_t* settings)
 	_scale[0] = _scale[1] = static_cast<float_t>(obs_data_get_double(settings, ST_KEY_SCALE));
 	_scale_type           = static_cast<float_t>(obs_data_get_double(settings, ST_KEY_SCALE_TYPE) / 100.0);
 
-	std::string new_file = obs_data_get_string(settings, ST_KEY_FILE);
+	const char* new_file = obs_data_get_string(settings, ST_KEY_FILE);
 	if (new_file != _texture_file) {
 		try {
 			_texture      = std::make_shared<streamfx::obs::gs::texture>(new_file);
@@ -174,6 +182,12 @@ obs_properties_t* displacement_factory::get_properties2(displacement_instance* d
 {
 	obs_properties_t* pr = obs_properties_create();
 
+	{
+		auto p = obs_properties_add_text(pr, "[[deprecated]]", D_TRANSLATE(ST_I18N_DEPRECATED), OBS_TEXT_INFO);
+		obs_property_text_set_info_type(p, OBS_TEXT_INFO_WARNING);
+		obs_property_text_set_info_word_wrap(p, true);
+	}
+
 	std::string path = "";
 	if (data) {
 		path = data->get_file();
@@ -192,13 +206,15 @@ obs_properties_t* displacement_factory::get_properties2(displacement_instance* d
 std::shared_ptr<displacement_factory> _filter_displacement_factory_instance = nullptr;
 
 void streamfx::filter::displacement::displacement_factory::initialize()
-try {
-	if (!_filter_displacement_factory_instance)
-		_filter_displacement_factory_instance = std::make_shared<displacement_factory>();
-} catch (const std::exception& ex) {
-	D_LOG_ERROR("Failed to initialize due to error: %s", ex.what());
-} catch (...) {
-	D_LOG_ERROR("Failed to initialize due to unknown error.", "");
+{
+	try {
+		if (!_filter_displacement_factory_instance)
+			_filter_displacement_factory_instance = std::make_shared<displacement_factory>();
+	} catch (const std::exception& ex) {
+		D_LOG_ERROR("Failed to initialize due to error: %s", ex.what());
+	} catch (...) {
+		D_LOG_ERROR("Failed to initialize due to unknown error.", "");
+	}
 }
 
 void streamfx::filter::displacement::displacement_factory::finalize()

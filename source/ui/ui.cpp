@@ -18,14 +18,15 @@
  */
 
 #include "ui.hpp"
-#include "common.hpp"
 #include "strings.hpp"
-#include <string_view>
+#include "ui-common.hpp"
 #include "configuration.hpp"
 #include "obs/obs-tools.hpp"
 #include "plugin.hpp"
 
-#include <obs-frontend-api.h>
+#include "warning-disable.hpp"
+#include <string_view>
+#include "warning-enable.hpp"
 
 // Translation Keys
 constexpr std::string_view _i18n_prefix       = "StreamFX::";
@@ -66,6 +67,7 @@ bool streamfx::ui::handler::have_shown_about_streamfx(bool shown)
 	auto data   = config->get();
 	if (shown) {
 		obs_data_set_bool(data.get(), _cfg_have_shown_about.data(), true);
+		config->save();
 	}
 	if (config->is_different_version()) {
 		return false;

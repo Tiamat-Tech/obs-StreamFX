@@ -20,19 +20,21 @@
 // SOFTWARE.
 
 #include "debug_handler.hpp"
+#include "common.hpp"
+#include "handler.hpp"
+#include "plugin.hpp"
+
+#include "warning-disable.hpp"
 #include <map>
 #include <string>
 #include <utility>
 #include <vector>
-#include "handler.hpp"
-#include "plugin.hpp"
+#include "warning-enable.hpp"
 
 extern "C" {
-#include <obs-properties.h>
-#pragma warning(push)
-#pragma warning(disable : 4244)
+#include "warning-disable.hpp"
 #include <libavutil/opt.h>
-#pragma warning(pop)
+#include "warning-enable.hpp"
 }
 
 using namespace streamfx::encoder::ffmpeg::handler;

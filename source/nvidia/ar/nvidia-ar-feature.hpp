@@ -19,12 +19,15 @@
 // SOFTWARE.
 
 #pragma once
-#include <string_view>
 #include "nvidia/ar/nvidia-ar.hpp"
 #include "nvidia/cuda/nvidia-cuda-obs.hpp"
 #include "nvidia/cv/nvidia-cv-image.hpp"
 #include "nvidia/cv/nvidia-cv-texture.hpp"
 #include "nvidia/cv/nvidia-cv.hpp"
+
+#include "warning-disable.hpp"
+#include <string_view>
+#include "warning-enable.hpp"
 
 namespace streamfx::nvidia::ar {
 	class feature {
@@ -104,7 +107,7 @@ namespace streamfx::nvidia::ar {
 
 			result = _nvar->NvAR_GetF32Array(_fx.get(), param, &data, &size);
 
-			value.resize(size);
+			value.resize(static_cast<size_t>(size));
 			memcpy(value.data(), data, size * sizeof(float));
 
 			return result;

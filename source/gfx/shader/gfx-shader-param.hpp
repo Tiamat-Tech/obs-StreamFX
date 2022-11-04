@@ -16,9 +16,12 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 
 #pragma once
+#include "obs/gs/gs-effect-parameter.hpp"
+
+#include "warning-disable.hpp"
 #include <list>
 #include <string>
-#include "obs/gs/gs-effect-parameter.hpp"
+#include "warning-enable.hpp"
 
 namespace streamfx::gfx {
 	namespace shader {
@@ -45,7 +48,7 @@ namespace streamfx::gfx {
 
 		std::size_t get_length_from_effect_type(streamfx::obs::gs::effect_parameter::type type);
 
-		parameter_type get_type_from_string(std::string v);
+		parameter_type get_type_from_string(std::string_view v);
 
 		class parameter {
 			// Parent Shader

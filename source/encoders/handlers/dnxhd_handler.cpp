@@ -1,12 +1,14 @@
+// Copyright (c) 2022 Michael Fabian Dirks <info@xaymar.com>
+
 #include "dnxhd_handler.hpp"
-#include <array>
+#include "common.hpp"
 #include "../codecs/dnxhr.hpp"
 #include "ffmpeg/tools.hpp"
 #include "plugin.hpp"
 
-extern "C" {
-#include <obs-module.h>
-}
+#include "warning-disable.hpp"
+#include <array>
+#include "warning-enable.hpp"
 
 using namespace streamfx::encoder::ffmpeg::handler;
 using namespace streamfx::encoder::codec::dnxhr;
@@ -23,18 +25,18 @@ void dnxhd_handler::override_colorformat(AVPixelFormat& target_format, obs_data_
 {
 	static const std::array<std::pair<const char*, AVPixelFormat>, static_cast<size_t>(5)> profile_to_format_map{
 		std::pair{"dnxhr_lb", AV_PIX_FMT_YUV422P}, std::pair{"dnxhr_sq", AV_PIX_FMT_YUV422P},
-		std::pair{"dnxhr_hq", AV_PIX_FMT_YUV422P}, std::pair{"dnxhr_hqx", AV_PIX_FMT_YUV422P10LE},
-		std::pair{"dnxhr_444", AV_PIX_FMT_YUV444P10LE}};
+		std::pair{"dnxhr_hq", AV_PIX_FMT_YUV422P}, std::pair{"dnxhr_hqx", AV_PIX_FMT_YUV422P10},
+		std::pair{"dnxhr_444", AV_PIX_FMT_YUV444P10}};
 
 	const char* selected_profile = obs_data_get_string(settings, S_CODEC_DNXHR_PROFILE);
-	for (auto kv : profile_to_format_map) {
+	for (const auto& kv : profile_to_format_map) {
 		if (strcmp(kv.first, selected_profile) == 0) {
 			target_format = kv.second;
 			return;
 		}
 	}
 
-	//Fallback for (yet) unknown formats
+	// Fallback for (yet) unknown formats
 	target_format = AV_PIX_FMT_YUV422P;
 }
 
@@ -56,7 +58,7 @@ bool dnxhd_handler::has_pixel_format_support(ffmpeg_factory* instance)
 inline const char* dnx_profile_to_display_name(const char* profile)
 {
 	char buffer[1024];
-	snprintf(buffer, sizeof(buffer), "%s.%s\0", S_CODEC_DNXHR_PROFILE, profile);
+	snprintf(buffer, sizeof(buffer), "%s.%s", S_CODEC_DNXHR_PROFILE, profile);
 	return D_TRANSLATE(buffer);
 }
 

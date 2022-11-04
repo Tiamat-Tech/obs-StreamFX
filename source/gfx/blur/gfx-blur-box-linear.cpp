@@ -16,21 +16,15 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 
 #include "gfx-blur-box-linear.hpp"
-#include <cmath>
-#include <memory>
-#include <stdexcept>
+#include "common.hpp"
 #include "obs/gs/gs-helper.hpp"
 #include "plugin.hpp"
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4201)
-#endif
-#include <obs.h>
-#include <obs-module.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-disable.hpp"
+#include <cmath>
+#include <memory>
+#include <stdexcept>
+#include "warning-enable.hpp"
 
 #define ST_MAX_BLUR_SIZE 128 // Also change this in box-linear.effect if modified.
 
@@ -66,7 +60,6 @@ bool streamfx::gfx::blur::box_linear_factory::is_type_supported(::streamfx::gfx:
 {
 	switch (type) {
 	case ::streamfx::gfx::blur::type::Area:
-		return true;
 	case ::streamfx::gfx::blur::type::Directional:
 		return true;
 	default:
@@ -199,7 +192,7 @@ streamfx::gfx::blur::box_linear::~box_linear() {}
 
 void streamfx::gfx::blur::box_linear::set_input(std::shared_ptr<::streamfx::obs::gs::texture> texture)
 {
-	_input_texture = texture;
+	_input_texture = std::move(texture);
 }
 
 ::streamfx::gfx::blur::type streamfx::gfx::blur::box_linear::get_type()

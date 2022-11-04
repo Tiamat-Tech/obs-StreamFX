@@ -19,11 +19,15 @@
 // SOFTWARE.
 
 #include "gfx-opengl.hpp"
-#include <mutex>
 #include "plugin.hpp"
 #include "util/util-logging.hpp"
 
+#include "warning-disable.hpp"
+#include <mutex>
+#include "warning-enable.hpp"
+
 // OpenGL
+#include "warning-disable.hpp"
 #include "glad/gl.h"
 #ifdef D_PLATFORM_WINDOWS
 #include "glad/wgl.h"
@@ -31,6 +35,7 @@
 #ifdef D_PLATFORM_LINUX
 #include "glad/glx.h"
 #endif
+#include "warning-enable.hpp"
 
 #ifdef _DEBUG
 #define ST_PREFIX "<%s> "

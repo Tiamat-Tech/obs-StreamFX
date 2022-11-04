@@ -22,12 +22,9 @@
 #include "ui-common.hpp"
 #include "updater.hpp"
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4251 4365 4371 4619 4946)
-#endif
-
+#include "warning-disable.hpp"
 #include <QAction>
+#include <QActionGroup>
 #include <QBoxLayout>
 #include <QComboBox>
 #include <QLabel>
@@ -38,9 +35,7 @@
 
 Q_DECLARE_METATYPE(::streamfx::version_stage);
 
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-enable.hpp"
 
 namespace streamfx::ui {
 	class updater_dialog : public QDialog, public Ui::Updater {

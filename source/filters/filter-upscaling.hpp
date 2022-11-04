@@ -19,15 +19,18 @@
 // SOFTWARE.
 
 #pragma once
-#include <atomic>
-#include <memory>
-#include <mutex>
 #include "obs/gs/gs-effect.hpp"
 #include "obs/gs/gs-rendertarget.hpp"
 #include "obs/gs/gs-texture.hpp"
 #include "obs/obs-source-factory.hpp"
 #include "plugin.hpp"
 #include "util/util-threadpool.hpp"
+
+#include "warning-disable.hpp"
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include "warning-enable.hpp"
 
 #ifdef ENABLE_FILTER_UPSCALING_NVIDIA
 #include "nvidia/vfx/nvidia-vfx-superresolution.hpp"
@@ -83,7 +86,7 @@ namespace streamfx::filter::upscaling {
 
 		private:
 		void switch_provider(upscaling_provider provider);
-		void task_switch_provider(util::threadpool_data_t data);
+		void task_switch_provider(util::threadpool::task_data_t data);
 
 #ifdef ENABLE_FILTER_UPSCALING_NVIDIA
 		void nvvfxsr_load();

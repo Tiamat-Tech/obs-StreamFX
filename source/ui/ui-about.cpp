@@ -18,27 +18,19 @@
  */
 
 #include "ui-about.hpp"
-#include <algorithm>
-#include <deque>
-#include <fstream>
-#include <map>
-#include <random>
-
-#include <obs-frontend-api.h>
-#include <nlohmann/json.hpp>
+#include "ui-common.hpp"
 #include "plugin.hpp"
 #include "ui-about-entry.hpp"
 #include "util/util-logging.hpp"
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4251 4365 4371 4619 4946)
-#endif
-#include <QLayout>
-#include <QLayoutItem>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-disable.hpp"
+#include <algorithm>
+#include <deque>
+#include <fstream>
+#include <map>
+#include <nlohmann/json.hpp>
+#include <random>
+#include "warning-enable.hpp"
 
 #ifdef _DEBUG
 #define ST_PREFIX "<%s> "
@@ -70,7 +62,8 @@ streamfx::ui::about::about() : QDialog(reinterpret_cast<QWidget*>(obs_frontend_g
 	content->setSizePolicy(QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Maximum);
 
 	// Create a uniform
-	std::mt19937_64                         generator;
+	std::random_device                      rd;
+	std::mt19937_64                         generator(rd());
 	std::uniform_int_distribution<uint64_t> rnd;
 
 	// Load entries from 'thanks.json'

@@ -16,9 +16,12 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 
 #include "gfx-source-texture.hpp"
-#include <stdexcept>
 #include "obs/gs/gs-helper.hpp"
 #include "obs/obs-tools.hpp"
+
+#include "warning-disable.hpp"
+#include <stdexcept>
+#include "warning-enable.hpp"
 
 streamfx::gfx::source_texture::~source_texture()
 {
@@ -28,7 +31,7 @@ streamfx::gfx::source_texture::~source_texture()
 }
 
 streamfx::gfx::source_texture::source_texture(streamfx::obs::weak_source child, streamfx::obs::weak_source parent)
-	: _child(child.lock()), _parent(parent.lock())
+	: _parent(parent.lock()), _child(child.lock())
 {
 	// Verify that 'child' and 'parent' exist.
 	if (!_child || !_parent) {
@@ -81,7 +84,7 @@ std::shared_ptr<streamfx::obs::gs::texture> streamfx::gfx::source_texture::rende
 	if (_child) {
 #ifdef ENABLE_PROFILING
 		auto cctr = streamfx::obs::gs::debug_marker(streamfx::obs::gs::debug_color_capture, "gfx::source_texture '%s'",
-													obs_source_get_name(_child->get()));
+													obs_source_get_name(_child.get()));
 #endif
 		auto op = _rt->render(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 		vec4 black;

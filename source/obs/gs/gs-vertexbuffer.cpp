@@ -18,8 +18,11 @@
  */
 
 #include "gs-vertexbuffer.hpp"
-#include <stdexcept>
 #include "obs/gs/gs-helper.hpp"
+
+#include "warning-disable.hpp"
+#include <stdexcept>
+#include "warning-enable.hpp"
 
 void streamfx::obs::gs::vertex_buffer::initialize(uint32_t capacity, uint8_t layers)
 {
@@ -203,7 +206,7 @@ streamfx::obs::gs::vertex_buffer::vertex_buffer(vertex_buffer const&& other) noe
 	_obs_data = other._obs_data;
 }
 
-void streamfx::obs::gs::vertex_buffer::operator=(vertex_buffer const&& other)
+void streamfx::obs::gs::vertex_buffer::operator=(vertex_buffer const&& other) noexcept
 { // Move Assignment
 	finalize();
 

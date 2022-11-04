@@ -19,12 +19,15 @@
 // SOFTWARE.
 
 #include "nvidia-ar.hpp"
-#include <filesystem>
-#include <mutex>
 #include "nvidia/cuda/nvidia-cuda-obs.hpp"
 #include "obs/gs/gs-helper.hpp"
 #include "util/util-logging.hpp"
 #include "util/util-platform.hpp"
+
+#include "warning-disable.hpp"
+#include <filesystem>
+#include <mutex>
+#include "warning-enable.hpp"
 
 #ifdef _DEBUG
 #define ST_PREFIX "<%s> "
@@ -41,9 +44,11 @@
 #endif
 
 #ifdef WIN32
+#include "warning-disable.hpp"
 #include <KnownFolders.h>
 #include <ShlObj.h>
 #include <Windows.h>
+#include "warning-enable.hpp"
 
 #define ST_LIBRARY_NAME "nvARPose.dll"
 #else
@@ -90,7 +95,7 @@ streamfx::nvidia::ar::ar::ar() : _library(), _model_path()
 		DWORD env_size = GetEnvironmentVariableW(L"NVAR_MODEL_PATH", nullptr, 0);
 		if (env_size > 0) {
 			std::vector<wchar_t> buffer(static_cast<size_t>(env_size) + 1, 0);
-			env_size    = GetEnvironmentVariableW(L"NVAR_MODEL_PATH", buffer.data(), buffer.size());
+			env_size    = GetEnvironmentVariableW(L"NVAR_MODEL_PATH", buffer.data(), static_cast<DWORD>(buffer.size()));
 			_model_path = std::wstring(buffer.data(), buffer.size());
 
 			// The SDK is location one directory "up" from the model path.

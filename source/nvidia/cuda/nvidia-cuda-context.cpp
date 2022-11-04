@@ -18,9 +18,12 @@
  */
 
 #include "nvidia-cuda-context.hpp"
+#include "util/util-logging.hpp"
+
+#include "warning-disable.hpp"
 #include <cassert>
 #include <stdexcept>
-#include "util/util-logging.hpp"
+#include "warning-enable.hpp"
 
 #ifdef _DEBUG
 #define ST_PREFIX "<%s> "
@@ -37,14 +40,9 @@
 #endif
 
 #ifdef WIN32
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4191 4242 4244 4365 4777 4986 5039 5204)
-#endif
+#include "warning-disable.hpp"
 #include <atlutil.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-enable.hpp"
 #endif
 
 #define ENABLE_STACK_CHECKS

@@ -19,9 +19,21 @@
 
 #include "filter-color-grade.hpp"
 #include "strings.hpp"
-#include <stdexcept>
 #include "obs/gs/gs-helper.hpp"
 #include "util/util-logging.hpp"
+
+#include "warning-disable.hpp"
+#include <stdexcept>
+#include "warning-enable.hpp"
+
+// OBS
+#include "warning-disable.hpp"
+extern "C" {
+#include <graphics/graphics.h>
+#include <graphics/matrix4.h>
+#include <util/platform.h>
+}
+#include "warning-enable.hpp"
 
 #ifdef _DEBUG
 #define ST_PREFIX "<%s> "
@@ -35,18 +47,6 @@
 #define D_LOG_WARNING(...) P_LOG_WARN(ST_PREFIX __VA_ARGS__)
 #define D_LOG_INFO(...) P_LOG_INFO(ST_PREFIX __VA_ARGS__)
 #define D_LOG_DEBUG(...) P_LOG_DEBUG(ST_PREFIX __VA_ARGS__)
-#endif
-
-// OBS
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4201)
-#endif
-#include <graphics/graphics.h>
-#include <graphics/matrix4.h>
-#include <util/platform.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
 #endif
 
 #define ST_I18N "Filter.ColorGrade"
@@ -128,14 +128,10 @@ static constexpr std::string_view HELP_URL = "https://github.com/Xaymar/obs-Stre
 color_grade_instance::~color_grade_instance() {}
 
 color_grade_instance::color_grade_instance(obs_data_t* data, obs_source_t* self)
-	: obs::source_instance(data, self), _effect(),
-
-	  _lift(), _gamma(), _gain(), _offset(), _tint_detection(), _tint_luma(), _tint_exponent(), _tint_low(),
-	  _tint_mid(), _tint_hig(), _correction(), _lut_enabled(true), _lut_depth(),
-
-	  _cache_rt(), _cache_texture(), _cache_fresh(false),
-
-	  _lut_initialized(false), _lut_dirty(true), _lut_producer(), _lut_consumer()
+	: obs::source_instance(data, self), _effect(), _lift(), _gamma(), _gain(), _offset(), _tint_detection(),
+	  _tint_luma(), _tint_exponent(), _tint_low(), _tint_mid(), _tint_hig(), _correction(), _lut_enabled(true),
+	  _lut_depth(), _ccache_rt(), _ccache_texture(), _ccache_fresh(false), _lut_initialized(false), _lut_dirty(true),
+	  _lut_producer(), _lut_consumer(), _lut_rt(), _lut_texture(), _cache_rt(), _cache_texture(), _cache_fresh(false)
 {
 	{
 		auto gctx = streamfx::obs::gs::context();
@@ -882,28 +878,32 @@ obs_properties_t* color_grade_factory::get_properties2(color_grade_instance* dat
 
 #ifdef ENABLE_FRONTEND
 bool color_grade_factory::on_manual_open(obs_properties_t* props, obs_property_t* property, void* data)
-try {
-	streamfx::open_url(HELP_URL);
-	return false;
-} catch (const std::exception& ex) {
-	D_LOG_ERROR("Failed to open manual due to error: %s", ex.what());
-	return false;
-} catch (...) {
-	D_LOG_ERROR("Failed to open manual due to unknown error.", "");
-	return false;
+{
+	try {
+		streamfx::open_url(HELP_URL);
+		return false;
+	} catch (const std::exception& ex) {
+		D_LOG_ERROR("Failed to open manual due to error: %s", ex.what());
+		return false;
+	} catch (...) {
+		D_LOG_ERROR("Failed to open manual due to unknown error.", "");
+		return false;
+	}
 }
 #endif
 
 std::shared_ptr<color_grade_factory> _color_grade_factory_instance = nullptr;
 
 void streamfx::filter::color_grade::color_grade_factory::initialize()
-try {
-	if (!_color_grade_factory_instance)
-		_color_grade_factory_instance = std::make_shared<color_grade_factory>();
-} catch (const std::exception& ex) {
-	D_LOG_ERROR("Failed to initialize due to error: %s", ex.what());
-} catch (...) {
-	D_LOG_ERROR("Failed to initialize due to unknown error.", "");
+{
+	try {
+		if (!_color_grade_factory_instance)
+			_color_grade_factory_instance = std::make_shared<color_grade_factory>();
+	} catch (const std::exception& ex) {
+		D_LOG_ERROR("Failed to initialize due to error: %s", ex.what());
+	} catch (...) {
+		D_LOG_ERROR("Failed to initialize due to unknown error.", "");
+	}
 }
 
 void streamfx::filter::color_grade::color_grade_factory::finalize()

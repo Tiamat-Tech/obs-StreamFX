@@ -18,21 +18,14 @@
 */
 
 #include "utility.hpp"
+#include "common.hpp"
+#include "plugin.hpp"
+
+#include "warning-disable.hpp"
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
-#include "plugin.hpp"
-
-// OBS
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4201)
-#pragma warning(disable : 5039)
-#endif
-#include <obs.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-enable.hpp"
 
 obs_property_t* streamfx::util::obs_properties_add_tristate(obs_properties_t* props, const char* name, const char* desc)
 {
@@ -103,12 +96,12 @@ void streamfx::util::vec4a::operator delete[](void* p)
 	streamfx::util::free_aligned(p);
 }
 
-std::pair<int64_t, int64_t> streamfx::util::size_from_string(std::string text, bool allowSquare)
+std::pair<int64_t, int64_t> streamfx::util::size_from_string(std::string_view text, bool allowSquare)
 {
 	int64_t width, height;
 
-	const char* begin = text.c_str();
-	const char* end   = text.c_str() + text.size() + 1;
+	const auto* begin = text.data();
+	const auto* end   = text.data() + text.size() + 1;
 	char*       here  = const_cast<char*>(end);
 
 	long long res = strtoll(begin, &here, 0);

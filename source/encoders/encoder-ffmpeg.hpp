@@ -1,5 +1,5 @@
 // FFMPEG Video Encoder Integration for OBS Studio
-// Copyright (c) 2019 Michael Fabian Dirks <info@xaymar.com>
+// Copyright (c) 2019-2022 Michael Fabian Dirks <info@xaymar.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -21,6 +21,13 @@
 
 #pragma once
 #include "common.hpp"
+#include "ffmpeg/avframe-queue.hpp"
+#include "ffmpeg/hwapi/base.hpp"
+#include "ffmpeg/swscale.hpp"
+#include "handlers/handler.hpp"
+#include "obs/obs-encoder-factory.hpp"
+
+#include "warning-disable.hpp"
 #include <condition_variable>
 #include <map>
 #include <mutex>
@@ -28,23 +35,13 @@
 #include <stack>
 #include <thread>
 #include <vector>
-#include "ffmpeg/avframe-queue.hpp"
-#include "ffmpeg/hwapi/base.hpp"
-#include "ffmpeg/swscale.hpp"
-#include "handlers/handler.hpp"
-#include "obs/obs-encoder-factory.hpp"
+#include "warning-enable.hpp"
 
 extern "C" {
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4242 4244 4365)
-#endif
-#include <obs-properties.h>
+#include "warning-disable.hpp"
 #include <libavcodec/avcodec.h>
 #include <libavutil/frame.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-enable.hpp"
 }
 
 namespace streamfx::encoder::ffmpeg {
@@ -58,13 +55,14 @@ namespace streamfx::encoder::ffmpeg {
 		std::shared_ptr<handler::handler> _handler;
 
 		::streamfx::ffmpeg::swscale _scaler;
-		AVPacket                    _packet;
+		std::shared_ptr<AVPacket>   _packet;
 
 		std::shared_ptr<::streamfx::ffmpeg::hwapi::base>     _hwapi;
 		std::shared_ptr<::streamfx::ffmpeg::hwapi::instance> _hwinst;
 
 		std::size_t _lag_in_frames;
 		std::size_t _sent_frames;
+		std::size_t _framerate_divisor;
 
 		// Extra Data
 		bool                 _have_first_frame;
@@ -123,7 +121,7 @@ namespace streamfx::encoder::ffmpeg {
 
 		const AVCodecContext* get_avcodeccontext();
 
-		void parse_ffmpeg_commandline(std::string text);
+		void parse_ffmpeg_commandline(std::string_view text);
 	};
 
 	class ffmpeg_factory : public obs::encoder_factory<ffmpeg_factory, ffmpeg_instance> {
@@ -172,7 +170,7 @@ namespace streamfx::encoder::ffmpeg {
 
 		std::shared_ptr<handler::handler> get_handler(std::string codec);
 
-		bool has_handler(std::string codec);
+		bool has_handler(std::string_view codec);
 
 		public: // Singleton
 		static void initialize();

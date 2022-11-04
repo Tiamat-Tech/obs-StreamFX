@@ -1,4 +1,5 @@
-# Copyright (C) 2017 Michael Fabian Dirks
+# Copyright (C) 2017-2022 Michael Fabian Dirks
+# Copyright (C) 2022 Romain Vigier
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -24,6 +25,30 @@ else()
 	set(LOGPREFIX "")
 endif()
 
+# MacOSX: Require at least MacOSX 10.15 for C++17 support.
+if(APPLE)
+	if(CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS 10.15)
+		CacheSet(CMAKE_OSX_DEPLOYMENT_TARGET "10.15")
+	endif()
+endif()
+
+################################################################################
+# Modules
+################################################################################
+
+# Search Paths
+set(CMAKE_MODULE_PATH
+	"${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules"
+	"${CMAKE_CURRENT_SOURCE_DIR}/cmake/clang"
+	"${CMAKE_CURRENT_SOURCE_DIR}/cmake/version"
+	"${CMAKE_CURRENT_SOURCE_DIR}/cmake"
+)
+
+# Include
+include("util")							# CacheClear, CacheSet
+include("version")						# version()
+include("CheckIPOSupported")			# check_ipo_supported
+
 ################################################################################
 # Detect if we are building with OBS Studio (different from Grouped builds)
 ################################################################################
@@ -35,7 +60,7 @@ if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_LIST_DIR}")
 else()
 	set(GROUPED ON)
 	set(PREFIX "StreamFX_")
-	if(GROUPED AND (TARGET libobs))
+	if(GROUPED AND ((TARGET libobs) OR (TARGET OBS::libobs)))
 		set(STANDALONE OFF)
 	endif()
 endif()
@@ -50,116 +75,51 @@ endif()
 # Versioning
 ################################################################################
 
-# Variables for Versioning
-set(VERSION_MAJOR 0) # Major
-set(VERSION_MINOR 0) # Minor
-set(VERSION_PATCH 0) # Patch
-set(VERSION_STAGE "") # Prefix for Tweak, if left empty will assume '.'.
-set(VERSION_TWEAK 0) # Tweak
-set(VERSION_COMMIT "00000000")
-# Final format will be [MAJOR].[MINOR].[PATCH]([TYPE][TWEAK])(-[COMMIT])
+# For automatic versioning, which version is the "root" of the current changes?
+set(_VERSION_GIT_BASE "0.11.0")
 
-function(parse_version_string)
-	# Parses a version in the format A.B.C[.|a|b|rc]D-E
-	cmake_parse_arguments(
-		PARSE_ARGV 0
-		_ARGS
-		""
-		"INPUT;OUTPUT"
-		""
-	)
-	
-	set(_tmp_MAJOR 0)
-	set(_tmp_MINOR 0)
-	set(_tmp_PATCH 0)
-	set(_tmp_STAGE "")
-	set(_tmp_TWEAK "")
-	set(_tmp_COMMIT "")
+# What is our version goal?
+set(_VERSION "0.12.0")
+version(PARSE _VERSION "${_VERSION}")
 
-	# Replace separators with list separators
-	string(REPLACE "-" "." _tmp "${_ARGS_INPUT}")
-	string(REPLACE "." ";" _tmp "${_tmp}")
-	
-	# Parse version differently depending on total string length.
-	list(LENGTH _tmp _tmp_len)
-	if(_tmp_len GREATER_EQUAL 1) # A[...]
-		list(GET _tmp 0 _tmp_MAJOR)
-	endif()
-	if(_tmp_len GREATER_EQUAL 2) # A.B[...]
-		list(GET _tmp 1 _tmp_MINOR)
-	endif()
-	if(_tmp_len GREATER_EQUAL 3) # A.B.C[...]
-		list(GET _tmp 2 _tmp_PATCH)
-	endif()
-	if(_tmp_len EQUAL 4) # A.B.C.D or A.B.C-gEEEEEEEE
-		list(GET _tmp 3 _tmp2)
-		# No support for '{N,M}' in CMake-Regex!
-		if(_tmp2 MATCHES "^g[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]")
-			# A.B.C-gEEEEEEEE
-			set(_tmp_COMMIT "${_tmp2}")
-		else()
-			# It is A.B.C.D
-			set(_tmp_TWEAK "${_tmp2}")
-			set(_tmp_STAGE "a")
-		endif()
-	elseif(_tmp_len EQUAL 5) # A.B.C.D-gEEEEEEEE
-		set(_tmp_STAGE "a")
-		list(GET _tmp 3 _tmp_TWEAK)
-		list(GET _tmp 4 _tmp_COMMIT)
-	endif()
-	if(_tmp_TWEAK STREQUAL "") # Is A.B.C-gEEEEEEEE actually A.B.CxD-gEEEEEEEE?
-		string(REGEX MATCHALL "^([0-9]+)([_a-c]+)([0-9]+)" T_MATCHES "${_tmp_PATCH}")
-		if(T_MATCHES)
-			set(_tmp_PATCH ${CMAKE_MATCH_1})
-			set(_tmp_STAGE ${CMAKE_MATCH_2})
-			set(_tmp_TWEAK ${CMAKE_MATCH_3})			
-		endif()
-	endif()
-
-	set(${_ARGS_OUTPUT}_MAJOR ${_tmp_MAJOR} PARENT_SCOPE)
-	set(${_ARGS_OUTPUT}_MINOR ${_tmp_MINOR} PARENT_SCOPE)
-	set(${_ARGS_OUTPUT}_PATCH ${_tmp_PATCH} PARENT_SCOPE)
-	set(${_ARGS_OUTPUT}_STAGE ${_tmp_STAGE} PARENT_SCOPE)
-	set(${_ARGS_OUTPUT}_TWEAK ${_tmp_TWEAK} PARENT_SCOPE)
-	set(${_ARGS_OUTPUT}_COMMIT ${_tmp_COMMIT} PARENT_SCOPE)
-endfunction()
-
-# Check if we are in a git repository.
+# If possible, automatically generate versions from git.
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/.git")
-	set(VERSION_BASE "0.11.0") # Automatic versioning base
-	set(VERSION_TARGET "0.12.0") # Automatic versioning target
-	
-	# Parse target version as it is for output.
-	parse_version_string(OUTPUT "VERSION" INPUT "${VERSION_TARGET}")
-
-	# Try and figure out where git is.
-	find_program(GIT git
-		PATHS
-			/bin
-			/sbin
-			/usr/bin
-			/usr/local/bin
+	find_program(GIT
+		NAMES
+			git
+			git.exe
 	)
 
-	if(GIT)
-		# Tweak 
+	if(EXISTS "${GIT}")
+		# Calculate the Tweak version component from the given base version.
 		execute_process(
-			COMMAND "${GIT}" describe --tags --long --match "${VERSION_BASE}" --abbrev=8 HEAD
+			COMMAND "${GIT}" describe --tags --long --match "${_VERSION_GIT_BASE}" --abbrev=8 HEAD
 			WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
 			RESULT_VARIABLE GIT_RESULT
-			OUTPUT_VARIABLE GIT_OUTPUT
+			OUTPUT_VARIABLE _VERSION_GIT
 			ERROR_VARIABLE GIT_ERROR
 			OUTPUT_STRIP_TRAILING_WHITESPACE
 			ERROR_STRIP_TRAILING_WHITESPACE
 			ERROR_QUIET
 		)
-		if(NOT GIT_RESULT EQUAL 0)
-			message(WARNING "${LOGPREFIX}Failed to detect version, using default instead.")
+		if(GIT_RESULT EQUAL 0)
+			# Some minor string editing so the output conforms to SemVer 2.0.0.
+			string(REPLACE "-" ";" _VERSION_GIT "${_VERSION_GIT}")
+
+			# Parse as SemVer 2.0.0
+			list(GET _VERSION_GIT 1 _VERSION_GIT_TWEAK)
+			list(GET _VERSION_GIT 2 _VERSION_GIT_BUILD)
+
+			# Update our global version.
+			version(MODIFY _VERSION "${_VERSION}" COMPRESS
+				TWEAK "${_VERSION_GIT_TWEAK}"
+				BUILD "${_VERSION_GIT_BUILD}"
+				PRERELEASE "a"
+				REQUIRE PATCH TWEAK
+			)
+			version(PARSE _VERSION "${_VERSION}" REQUIRE PATCH TWEAK)
 		else()
-			parse_version_string(OUTPUT "GIT_VERSION" INPUT "${GIT_OUTPUT}")
-			set(VERSION_STAGE ${GIT_VERSION_STAGE})
-			set(VERSION_TWEAK ${GIT_VERSION_TWEAK})
-			set(VERSION_COMMIT ${GIT_VERSION_COMMIT})
+			message(WARNING "${LOGPREFIX}Unable to detect Tweak and Build component with 'git'.")
 		endif()
 
 		# Is there a tag on the current commit?
@@ -167,108 +127,101 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/.git")
 			COMMAND "${GIT}" tag "--sort=-v:refname" "--points-at" HEAD
 			WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
 			RESULT_VARIABLE GIT_RESULT
-			OUTPUT_VARIABLE TAG_OUTPUT
+			OUTPUT_VARIABLE _VERSION_TAG
 			ERROR_VARIABLE GIT_ERROR
 			OUTPUT_STRIP_TRAILING_WHITESPACE
 			ERROR_STRIP_TRAILING_WHITESPACE
 			ERROR_QUIET
 		)
-		if((GIT_RESULT EQUAL 0) AND (NOT "${TAG_OUTPUT}" STREQUAL ""))
-			string(REGEX REPLACE "[\r\n]+.*" "" T_MATCHES "${TAG_OUTPUT}")
-			parse_version_string(OUTPUT "TAG_VERSION" INPUT "${T_MATCHES}")
-			set(VERSION_MAJOR "${TAG_VERSION_MAJOR}")
-			set(VERSION_MINOR "${TAG_VERSION_MINOR}")
-			set(VERSION_PATCH "${TAG_VERSION_PATCH}")
-			set(VERSION_STAGE "${TAG_VERSION_STAGE}")
-			set(VERSION_TWEAK "${TAG_VERSION_TWEAK}")
+		if((GIT_RESULT EQUAL 0) AND (NOT "${_VERSION_TAG}" STREQUAL ""))
+			# Some minor string editing so the output conforms to SemVer 2.0.0.
+			string(REGEX REPLACE "[\r\n]+.*" "" _VERSION_TAG "${_VERSION_TAG}")
+
+			# Parse as SemVer 2.0.0
+			version(PARSE _VERSION_TAG "${_VERSION_TAG}" REQUIRE PATCH TWEAK)
+			if(_VERSION_TAG_PRERELEASE)
+				string(SUBSTRING "${_VERSION_TAG_PRERELEASE}" 1 -1 _VERSION_TAG_TWEAK)
+				string(SUBSTRING "${_VERSION_TAG_PRERELEASE}" 0 1 _VERSION_TAG_PRERELEASE)
+
+				if(NOT _VERSION_TAG_TWEAK STREQUAL _VERSION_GIT_TWEAK)
+					message(WARNING "${LOGPREFIX}'git' tag mismatches detected version: '${_VERSION_TAG_TWEAK}' != '${_VERSION_GIT_TWEAK}'.")
+				endif()
+			endif()
+
+			# Update our global version.
+			version(GENERATE _VERSION COMPRESS
+				MAJOR "${_VERSION_TAG_MAJOR}"
+				MINOR "${_VERSION_TAG_MINOR}"
+				PATCH "${_VERSION_TAG_PATCH}"
+				TWEAK "${_VERSION_TAG_TWEAK}"
+				PRERELEASE "${_VERSION_TAG_PRERELEASE}"
+				BUILD "${_VERSION_BUILD}"
+				REQUIRE PATCH TWEAK
+			)
+			version(PARSE _VERSION "${_VERSION}" REQUIRE PATCH TWEAK)
 		endif()
+	else()
+		message(STATUS "${LOGPREFIX}'git' not found, automatic version detection disabled.")
 	endif()
 else()
 	message(STATUS "${LOGPREFIX}Not a git repository, automatic version detection disabled.")
 endif()
 
 # Allow manual overrides of the detected version.
-set(${PREFIX}VERSION "" CACHE STRING "Override StreamFX version with this string. Format: Major.Minor.Patch[Stage][Tweak[-Commit8c]]")
-if(NOT (${PREFIX}VERSION STREQUAL ""))
-	parse_version_string(OUTPUT "VERSION" INPUT "${${PREFIX}VERSION}")	
+set(${PREFIX}VERSION "" CACHE STRING "Override detected or pre-configured version with this string. Accepts strings in CMake and SemVer 2.0.0 format.")
+if(NOT ("${${PREFIX}VERSION}" STREQUAL ""))
+	version(PARSE _VERSION_CFG "${${PREFIX}VERSION}" REQUIRE PATCH TWEAK)
+	if("${_VERSION_CFG_BUILD}" STREQUAL "")
+		set(_VERSION_CFG_BUILD "${_VERSION_BUILD}")
+	endif()
+	version(GENERATE _VERSION COMPRESS
+		MAJOR "${_VERSION_CFG_MAJOR}"
+		MINOR "${_VERSION_CFG_MINOR}"
+		PATCH "${_VERSION_CFG_PATCH}"
+		TWEAK "${_VERSION_CFG_TWEAK}"
+		PRERELEASE "${_VERSION_CFG_PRERELEASE}"
+		BUILD "${_VERSION_CFG_BUILD}"
+	)
 endif()
 
-# Generate Version String
-if(VERSION_COMMIT)
-	set(VERSION_STRING "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}${VERSION_STAGE}${VERSION_TWEAK}-${VERSION_COMMIT}")
-else()
-	set(VERSION_STRING "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}${VERSION_STAGE}${VERSION_TWEAK}")
+set(_VERSION_THIN "${_VERSION_MAJOR}.${_VERSION_MINOR}.${_VERSION_PATCH}")
+if(NOT (_VERSION_PRERELEASE STREQUAL ""))
+	set(_VERSION_THIN "${_VERSION_THIN}${_VERSION_PRERELEASE}${_VERSION_TWEAK}")
+endif()
+if(NOT (VERSION_COMMIT STREQUAL ""))
+	set(_VERSION_THIN "${_VERSION_THIN}-${_VERSION_BUILD}")
 endif()
 
-# Log the detected version.
-message(STATUS "${LOGPREFIX}Version ${VERSION_STRING}")
+# Parse & Log the detected version.
+message(STATUS "${LOGPREFIX}Version ${_VERSION}")
 
 ################################################################################
 # Project
 ################################################################################
-set(_VERSION_TWEAK "0${VERSION_TWEAK}")
+
+# Metadata
+version(GENERATE PROJECT_VERSION
+	MAJOR "${_VERSION_MAJOR}"
+	MINOR "${_VERSION_MINOR}"
+	PATCH "${_VERSION_PATCH}"
+	TWEAK "${_VERSION_TWEAK}"
+	REQUIRE PATCH TWEAK
+)
 project(
 	StreamFX
-	VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.${_VERSION_TWEAK}
+	VERSION ${PROJECT_VERSION}
 	DESCRIPTION "Additional sources, filters, transitions and encoders for OBS Studio."
 	HOMEPAGE_URL "https://streamfx.xaymar.com/"
 )
-
-# Helpers for CI
-if(VERSION_STAGE STREQUAL "")
-	file(
-		GENERATE
-		OUTPUT "$<TARGET_PROPERTY:${PROJECT_NAME},BINARY_DIR>/tag_name"
-		CONTENT "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}"
-		TARGET ${PROJECT_NAME}
-		FILE_PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_READ GROUP_EXECUTE
-	)
-else()
-	file(
-		GENERATE
-		OUTPUT "$<TARGET_PROPERTY:${PROJECT_NAME},BINARY_DIR>/tag_name"
-		CONTENT "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}${VERSION_STAGE}${VERSION_TWEAK}"
-		TARGET ${PROJECT_NAME}
-		FILE_PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_READ GROUP_EXECUTE
-	)
-endif()
-file(
-	GENERATE
-	OUTPUT "$<TARGET_PROPERTY:${PROJECT_NAME},BINARY_DIR>/version"
-	CONTENT "${VERSION_STRING}"
-	TARGET ${PROJECT_NAME}
-	FILE_PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_READ GROUP_EXECUTE
-)
-
-# Full Project Name
-set(PROJECT_FULL_NAME "StreamFX (for OBS Studio)")
-
-# Description
-set(PROJECT_DESCRIPTION "Better Production Quality, for free.")
-
-# Authors (TODO: Generate this from AUTHORS)
+set(PROJECT_IDENTIFER "com.xaymar.${PROJECT_NAME}.obs")
+set(PROJECT_TITLE "StreamFX (for OBS Studio)")
 set(PROJECT_AUTHORS "Michael Fabian 'Xaymar' Dirks <info@xaymar.com>")
-
-# Copyright Years (TODO: Update every year)
-set(PROJECT_COPYRIGHT_YEARS "2018 - 2020")
-
-# Versioning
-set(PROJECT_VERSION_STRING ${VERSION_STRING})
-
-################################################################################
-# Modules
-################################################################################
-
-# Search Paths
-set(CMAKE_MODULE_PATH
-	"${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules"
-	"${CMAKE_CURRENT_SOURCE_DIR}/cmake"
+set(PROJECT_COPYRIGHT "2017 - 2022, Michael Fabian Dirks. All Rights Reserved")
+set(PROJECT_TRADEMARKS "")
+list(APPEND PROJECT_TRADEMARKS
+	"AMD is a trademark of Advanced Micro Devices Inc."
+	"NVIDIA is a trademark of Nvidia Corporation"
 )
-
-# Include
-include("util")							# CacheClear, CacheSet
-include("DownloadProject")				# DownloadProject
-include("CheckIPOSupported")			# check_ipo_supported
 
 ################################################################################
 # Platform Setup
@@ -348,6 +301,15 @@ message(STATUS "${LOGPREFIX}Target is ${D_PLATFORM_BITS}bit ${ARCH_INST} with a 
 # Options
 ################################################################################
 
+# Dependencies
+if(STANDALONE)
+	set(libobs_DIR "" CACHE PATH "Path to libobs and obs-frontend-api")
+	set(Qt_DIR "" CACHE PATH "Path to Qt6 or Qt5")
+	set(CURL_DIR "" CACHE PATH "Path to CURL")
+	set(FFmpeg_DIR "" CACHE PATH "Path to FFmpeg")
+endif()
+set(AOM_DIR "" CACHE PATH "Path to AOM library")
+
 # Features
 ## Encoders
 set(${PREFIX}ENABLE_ENCODER_FFMPEG ON CACHE BOOL "Enable FFmpeg Encoder integration.")
@@ -387,7 +349,6 @@ set(${PREFIX}ENABLE_UPDATER ON CACHE BOOL "Enable automatic update checks.")
 
 ## Code Related
 set(${PREFIX}ENABLE_CLANG OFF CACHE BOOL "Enable Clang integration for supported compilers.")
-set(${PREFIX}ENABLE_CODESIGN OFF CACHE BOOL "Enable Code Signing integration for supported environments.")
 set(${PREFIX}ENABLE_PROFILING OFF CACHE BOOL "Enable CPU and GPU performance tracking, which has a non-zero overhead at all times. Do not enable this for release builds.")
 
 ## Compile/Link Related
@@ -409,6 +370,8 @@ if(STANDALONE)
 	set(STRUCTURE_UNIFIED CACHE BOOL "Install for use in a Plugin Manager")
 	if(D_PLATFORM_LINUX)
 		set(STRUCTURE_PACKAGEMANAGER CACHE BOOL "Install for use in a Package Manager (system-wide installation)")
+	elseif(D_PLATFORM_MAC)
+		set(STRUCTURE_BUNDLE ON CACHE BOOL "Install as a Loadable Bundle (.plugin)")
 	endif()
 
 	set(PACKAGE_PREFIX "${CMAKE_BINARY_DIR}" CACHE PATH "Where to place the packages?")
@@ -426,347 +389,38 @@ if(${PREFIX}ENABLE_CLANG AND (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/clang/Cl
 endif()
 
 ################################################################################
-# Codesign
+# Component search paths
 ################################################################################
 
-if(${PREFIX}ENABLE_CODESIGN AND (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/codesign/CodeSign.cmake"))
-	include("cmake/codesign/CodeSign.cmake")
-	set(HAVE_CODESIGN ON)
-
-	set(${PREFIX}CODESIGN_FILE "" CACHE FILEPATH "Path to Code-Signing certificate.")
-	if(WIN32)
-		set(${PREFIX}CODESIGN_NAME "" CACHE STRING "Name of Code-Signing certificate in Windows's certificate storage.")
-	endif()
-	set(${PREFIX}CODESIGN_PASS "" CACHE STRING "Password for Code-Signing certificate.")
-	set(${PREFIX}CODESIGN_TIMESTAMPS ON CACHE BOOL "Should the resulting binary be timestamped?")
-
-	set(_CODESIGN_FILE "$ENV{${PREFIX}CODESIGN_FILE}")
-	if(${PREFIX}CODESIGN_FILE)
-		set(_CODESIGN_FILE "${${PREFIX}CODESIGN_FILE}")
-	endif()
-	set(_CODESIGN_NAME "$ENV{${PREFIX}CODESIGN_NAME}")
-	if(${PREFIX}CODESIGN_NAME)
-		set(_CODESIGN_NAME "${${PREFIX}CODESIGN_NAME}")
-	endif()
-	set(_CODESIGN_PASS "$ENV{${PREFIX}CODESIGN_PASS}")
-	if(${PREFIX}CODESIGN_PASS)
-		set(_CODESIGN_PASS "${${PREFIX}CODESIGN_PASS}")
-	endif()
-endif()
-
-################################################################################
-# Auto-Dependency: libOBS + obs-frontend-api
-################################################################################
-
-if(STANDALONE)
-	# Options
-	set(${PREFIX}OBS_DOWNLOAD TRUE CACHE BOOL "Automatically download libOBS and obs-frontend-api?")
-	set(${PREFIX}OBS_PATH "" CACHE PATH "Path to libOBS, if ${PREFIX}OBS_DOWNLOAD is not set.")
-	set(${PREFIX}OBS_DOWNLOAD_URL "" CACHE STRING "The URL from which to download libOBS and obs-frontend-api, if autodetection fails. (Optional)")
-	set(${PREFIX}OBS_DOWNLOAD_HASH "" CACHE STRING "The hash string for the given URL. Must be a SHA-256 hash if provided. (Optional)")
-	mark_as_advanced(
-		${PREFIX}OBS_PATH
-		${PREFIX}OBS_DOWNLOAD_URL
-		${PREFIX}OBS_DOWNLOAD_HASH
+list(APPEND CMAKE_PREFIX_PATH
+	"${${PREFIX}AOM_PATH}"
+	"${${PREFIX}OBSDEPS_PATH}"
+	"${${PREFIX}QT_PATH}"
+	"${AOM_DIR}"
+	"${CURL_DIR}"
+	"${DepsPath}"
+	"${FFmpeg_DIR}"
+	"${libobs_DIR}"
+	"${Qt_DIR}"
+	"${Qt5_DIR}"
+	"${Qt6_DIR}"
+	"${QTDIR}"
+)
+if(D_PLATFORM_MAC)
+	list(APPEND CMAKE_PREFIX_PATH
+		"${${PREFIX}AOM_PATH}/Frameworks"
+		"${${PREFIX}OBSDEPS_PATH}/Frameworks"
+		"${${PREFIX}QT_PATH}/Frameworks"
+		"${AOM_DIR}/Frameworks"
+		"${CURL_DIR}/Frameworks"
+		"${DepsPath}/Frameworks"
+		"${FFmpeg_DIR}/Frameworks"
+		"${libobs_DIR}/Frameworks"
+		"${Qt_DIR}/Frameworks"
+		"${Qt5_DIR}/Frameworks"
+		"${Qt6_DIR}/Frameworks"
+		"${QTDIR}/Frameworks"
 	)
-
-	if(${PREFIX}OBS_DOWNLOAD)
-		if(${PREFIX}OBS_DOWNLOAD_URL STREQUAL "")
-			# Figure out download URLs and hashes.
-			if(D_PLATFORM_WINDOWS)
-				if(D_PLATFORM_ARCH_X86)
-					if(D_PLATFORM_BITS EQUAL 64)
-						set(OBS_DOWNLOAD_URL "https://github.com/Xaymar/obs-studio/releases/download/27.2.4-ci/windows-x86_64.tar.gz")
-						set(OBS_DOWNLOAD_HASH "DD931BBB2E0720F1D7573C65D8CC9D638F1EE2AC99F7173BF8935CD3A3BCE3F4")
-					endif()
-				endif()
-			elseif(D_PLATFORM_LINUX)
-				if(D_PLATFORM_ARCH_X86)
-					if(D_PLATFORM_BITS EQUAL 64)
-						set(OBS_DOWNLOAD_URL "https://github.com/Xaymar/obs-studio/releases/download/27.2.4-ci/linux-x86_64.tar.gz")
-						set(OBS_DOWNLOAD_HASH "CA19E8260E1A556E6231D75064837C61C6D480BD90C97A0B930005AE527BF625")
-					endif()
-				endif()
-			elseif(D_PLATFORM_MAC)
-				if(D_PLATFORM_ARCH_X86)
-					if(D_PLATFORM_BITS EQUAL 64)
-						set(OBS_DOWNLOAD_URL "https://github.com/Xaymar/obs-studio/releases/download/27.2.4-ci/macos-x86_64.tar.gz")
-						set(OBS_DOWNLOAD_HASH "0DD5A57DD537B97CAA8470212F8F6B637F47D4742A5D1F17787F4FE9DBC70B33")
-					endif()
-				endif()
-			endif()
-
-			# Verify that the platform, architecture and bitness is supported.
-			if(OBS_DOWNLOAD_URL STREQUAL "")
-				message(FATAL_ERROR "${LOGPREFIX}Download for libOBS failed, as Platform '${D_PLATFORM_OS}' with architecture '${D_PLATFORM_ARCH}' and bitness '${D_PLATFORM_BITS}' is not supported.")
-				return()
-			endif()
-		else()
-			set(OBS_DOWNLOAD_URL "${${PREFIX}OBS_DOWNLOAD_URL}")
-			set(OBS_DOWNLOAD_HASH "${${PREFIX}OBS_DOWNLOAD_HASH}")
-		endif()
-
-		if(OBS_DOWNLOAD_HASH STREQUAL "")
-			download_project(
-				PROJ libobs
-				PREFIX "autodeps"
-				URL "${OBS_DOWNLOAD_URL}"
-				DOWNLOAD_NO_PROGRESS OFF
-				UPDATE_DISCONNECTED OFF
-			)
-		else()
-			download_project(
-				PROJ libobs
-				PREFIX "autodeps"
-				URL "${OBS_DOWNLOAD_URL}"
-				URL_HASH "SHA256=${OBS_DOWNLOAD_HASH}"
-				DOWNLOAD_NO_PROGRESS OFF
-				UPDATE_DISCONNECTED OFF
-			)
-		endif()
-		CacheSet(${PREFIX}OBS_PATH "${libobs_SOURCE_DIR}")
-	endif()
-endif()
-
-################################################################################
-# Auto-Dependency: OBS Studio Dependencies
-################################################################################
-
-if(STANDALONE AND NOT D_PLATFORM_LINUX)
-	# Options
-	set(${PREFIX}OBSDEPS_DOWNLOAD TRUE CACHE BOOL "Automatically download pre-built libOBS dependencies?")
-	set(${PREFIX}OBSDEPS_PATH "" CACHE PATH "Path to pre-build libOBS dependencies, if ${PREFIX}OBSDEPS_DOWNLOAD is not set.")
-	set(${PREFIX}OBSDEPS_DOWNLOAD_URL "" CACHE STRING "The URL from which to download pre-built libOBS dependencies, if autodetection fails. (Optional)")
-	set(${PREFIX}OBSDEPS_DOWNLOAD_HASH "" CACHE STRING "The hash string for the given URL. Must be a SHA-256 hash if provided. (Optional)")
-	mark_as_advanced(
-		${PREFIX}OBSDEPS_PATH
-		${PREFIX}OBSDEPS_DOWNLOAD_URL
-		${PREFIX}OBSDEPS_DOWNLOAD_HASH
-	)
-
-	if(${PREFIX}OBSDEPS_DOWNLOAD)
-		if(${PREFIX}OBSDEPS_DOWNLOAD_URL STREQUAL "")
-			# Figure out download URLs and hashes.
-			if(D_PLATFORM_WINDOWS)
-				set(DEPS_VERSION "2022-01-31")
-				if(D_PLATFORM_ARCH_X86)
-					if(D_PLATFORM_BITS EQUAL 64)
-						set(OBSDEPS_DOWNLOAD_URL "https://github.com/obsproject/obs-deps/releases/download/win-${DEPS_VERSION}/windows-deps-${DEPS_VERSION}.zip")
-						set(OBSDEPS_DOWNLOAD_HASH "66E55FE35A507C902C036EB11E691D0257FECA545A8EE57324B69427717026DD")
-					endif()
-				endif()
-			elseif(D_PLATFORM_MAC)
-				set(DEPS_VERSION "2022-02-13")
-				if(D_PLATFORM_ARCH_X86 AND D_PLATFORM_ARCH_ARM)
-					if(D_PLATFORM_BITS EQUAL 64)
-						set(OBSDEPS_DOWNLOAD_URL "https://github.com/obsproject/obs-deps/releases/download/${DEPS_VERSION}/macos-deps-${DEPS_VERSION}-universal.tar.xz")
-						set(OBSDEPS_DOWNLOAD_HASH "77471B1D345A768E8EFEC3F6AD9DC79F3C7CD34840B66F721B80025D29713F5D")
-					endif()
-				elseif(D_PLATFORM_ARCH_X86)
-					if(D_PLATFORM_BITS EQUAL 64)
-						set(OBSDEPS_DOWNLOAD_URL "https://github.com/obsproject/obs-deps/releases/download/${DEPS_VERSION}/macos-deps-${DEPS_VERSION}-x86_64.tar.xz")
-						set(OBSDEPS_DOWNLOAD_HASH "1A8715D66E664B857942DEADED0DC46C4F6CD22E88F01ED1188F3BD3FCF632C4")
-					endif()
-				elseif(D_PLATFORM_ARCH_ARM)
-					if(D_PLATFORM_BITS EQUAL 64)
-						set(OBSDEPS_DOWNLOAD_URL "https://github.com/obsproject/obs-deps/releases/download/${DEPS_VERSION}/macos-deps-${DEPS_VERSION}-arm64.tar.xz")
-						set(OBSDEPS_DOWNLOAD_HASH "2CFCAF05765400C696908F242AEA87B6E1848E1A48CD3EDC2EB7F8CB249C9D48")
-					endif()
-				endif()
-			endif()
-
-			# Verify that the platform, architecture and bitness is supported.
-			if(OBSDEPS_DOWNLOAD_URL STREQUAL "")
-				message(FATAL_ERROR "${LOGPREFIX}Download for pre-built OBS dependencies failed, as Platform '${D_PLATFORM_OS}' with architecture '${D_PLATFORM_ARCH}' and bitness '${D_PLATFORM_BITS}' is not supported.")
-				return()
-			endif()
-		else()
-			set(OBSDEPS_DOWNLOAD_URL "${${PREFIX}OBSDEPS_DOWNLOAD_URL}")
-			set(OBSDEPS_DOWNLOAD_HASH "${${PREFIX}OBSDEPS_DOWNLOAD_HASH}")
-		endif()
-
-		if(OBSDEPS_DOWNLOAD_HASH STREQUAL "")
-			download_project(
-				PROJ obsdeps
-				PREFIX "autodeps"
-				URL "${OBSDEPS_DOWNLOAD_URL}"
-				DOWNLOAD_NO_PROGRESS OFF
-				UPDATE_DISCONNECTED OFF
-			)
-		else()
-			download_project(
-				PROJ obsdeps
-				PREFIX "autodeps"
-				URL "${OBSDEPS_DOWNLOAD_URL}"
-				URL_HASH "SHA256=${OBSDEPS_DOWNLOAD_HASH}"
-				DOWNLOAD_NO_PROGRESS OFF
-				UPDATE_DISCONNECTED OFF
-			)
-		endif()
-		CacheSet(${PREFIX}OBSDEPS_PATH "${obsdeps_SOURCE_DIR}")
-	endif()
-
-	if(D_PLATFORM_WINDOWS)
-		set(_OBSDEPS_PATH "${${PREFIX}OBSDEPS_PATH}/win${D_PLATFORM_BITS}")
-		set(FFmpegPath "${${PREFIX}OBSDEPS_PATH}/win${D_PLATFORM_BITS}")
-	elseif(D_PLATFORM_MAC)
-		set(_OBSDEPS_PATH "${${PREFIX}OBSDEPS_PATH}/obsdeps")
-		set(FFmpegPath "${${PREFIX}OBSDEPS_PATH}/obsdeps")
-	endif()
-endif()
-
-################################################################################
-# Auto-Dependency: Qt v5.x
-################################################################################
-
-if(STANDALONE AND NOT D_PLATFORM_LINUX)
-	# Options
-	set(${PREFIX}QT_DOWNLOAD TRUE CACHE BOOL "Automatically download Qt?")
-	set(${PREFIX}QT_PATH "" CACHE PATH "Path to Qt, if ${PREFIX}QT_DOWNLOAD is not set.")
-	set(${PREFIX}QT_DOWNLOAD_URL "" CACHE STRING "The URL from which to download Qt, if autodetection fails. (Optional)")
-	set(${PREFIX}QT_DOWNLOAD_HASH "" CACHE STRING "The hash string for the given URL. Must be a SHA-256 hash if provided. (Optional)")
-	mark_as_advanced(
-		${PREFIX}QT_PATH
-		${PREFIX}QT_DOWNLOAD_URL
-		${PREFIX}QT_DOWNLOAD_HASH
-	)
-
-	if(${PREFIX}QT_DOWNLOAD)
-		if(${PREFIX}QT_DOWNLOAD_URL STREQUAL "")
-			# Figure out download URLs and hashes.
-			if(D_PLATFORM_WINDOWS)
-				set(DEPS_VERSION "5.15.2")
-				if(D_PLATFORM_ARCH_X86)
-					if(D_PLATFORM_BITS EQUAL 64)
-						set(QT_DOWNLOAD_URL "https://cdn-fastly.obsproject.com/downloads/Qt_${DEPS_VERSION}.7z")
-						set(QT_DOWNLOAD_HASH "9EF1DFEEBE6AB7FFC55FD285667CC5D9CB2D298646C107C2295D13F14708E64E")
-					endif()
-				endif()
-			elseif(D_PLATFORM_MAC)
-				set(DEPS_VERSION "2022-02-13")
-				if(D_PLATFORM_ARCH_X86 AND D_PLATFORM_ARCH_ARM)
-					if(D_PLATFORM_BITS EQUAL 64)
-						set(QT_DOWNLOAD_URL "https://github.com/obsproject/obs-deps/releases/download/${DEPS_VERSION}/macos-deps-qt-${DEPS_VERSION}-universal.tar.xz")
-						set(QT_DOWNLOAD_HASH "13FBCC45FD9D08B30E702D481FE4D58B23F93AA06848CEDE4EBE0956C79A5E8A")
-					endif()
-				elseif(D_PLATFORM_ARCH_X86)
-					if(D_PLATFORM_BITS EQUAL 64)
-						set(QT_DOWNLOAD_URL "https://github.com/obsproject/obs-deps/releases/download/${DEPS_VERSION}/macos-deps-qt-${DEPS_VERSION}-x86_64.tar.xz")
-						set(QT_DOWNLOAD_HASH "35A58FEE8DFD70D3D2DCC0AE0B77132C04A451C6F041A02DC41B207B375FC74B")
-					endif()
-				elseif(D_PLATFORM_ARCH_ARM)
-					if(D_PLATFORM_BITS EQUAL 64)
-						set(QT_DOWNLOAD_URL "https://github.com/obsproject/obs-deps/releases/download/${DEPS_VERSION}/macos-deps-qt-${DEPS_VERSION}-arm64.tar.xz")
-						set(QT_DOWNLOAD_HASH "E99146B9C7775C245A2D22F2EF24FC111FCCD71BAD0F03B64DB707124FFB8707")
-					endif()
-				endif()
-			endif()
-
-			# Verify that the platform, architecture and bitness is supported.
-			if(QT_DOWNLOAD_URL STREQUAL "")
-				message(FATAL_ERROR "${LOGPREFIX}Download for Qt failed, as Platform '${D_PLATFORM_OS}' with architecture '${D_PLATFORM_ARCH}' and bitness '${D_PLATFORM_BITS}' is not supported.")
-				return()
-			endif()
-		else()
-			set(QT_DOWNLOAD_URL "${${PREFIX}QT_DOWNLOAD_URL}")
-			set(QT_DOWNLOAD_HASH "${${PREFIX}QT_DOWNLOAD_HASH}")
-		endif()
-
-		if(QT_DOWNLOAD_HASH STREQUAL "")
-			download_project(
-				PROJ qt
-				PREFIX "autodeps"
-				URL "${QT_DOWNLOAD_URL}"
-				DOWNLOAD_NO_PROGRESS OFF
-				UPDATE_DISCONNECTED OFF
-			)
-		else()
-			download_project(
-				PROJ qt
-				PREFIX "autodeps"
-				URL "${QT_DOWNLOAD_URL}"
-				URL_HASH "SHA256=${QT_DOWNLOAD_HASH}"
-				DOWNLOAD_NO_PROGRESS OFF
-				UPDATE_DISCONNECTED OFF
-			)
-		endif()
-		execute_process(COMMAND "xattr" "-r" "-d" "com.apple.quarantine" "${qt_SOURCE_DIR}")
-
-		if(D_PLATFORM_WINDOWS)
-			CacheSet(${PREFIX}QT_PATH "${qt_SOURCE_DIR}/msvc2019_64")
-		else()
-			CacheSet(${PREFIX}QT_PATH "${qt_SOURCE_DIR}")
-		endif()
-	endif()
-
-	set(Qt5_DIR "${${PREFIX}QT_PATH}/lib/cmake/Qt5" CACHE STRING "Path to Qt")
-	CacheSet(Qt5_DIR "${${PREFIX}QT_PATH}/lib/cmake/Qt5")
-endif()
-
-################################################################################
-# Auto-Dependency: libAOM
-################################################################################
-
-if(D_PLATFORM_WINDOWS)
-	# Options
-	set(${PREFIX}AOM_DOWNLOAD TRUE CACHE BOOL "Automatically download AOM?")
-	set(${PREFIX}AOM_PATH "" CACHE PATH "Path to AOM, if ${PREFIX}AOM_DOWNLOAD is not set.")
-	set(${PREFIX}AOM_DOWNLOAD_URL "" CACHE STRING "The URL from which to download AOM, if autodetection fails. (Optional)")
-	set(${PREFIX}AOM_DOWNLOAD_HASH "" CACHE STRING "The hash string for the given URL. Must be a SHA-256 hash if provided. (Optional)")
-	mark_as_advanced(
-		${PREFIX}AOM_PATH
-		${PREFIX}AOM_DOWNLOAD_URL
-		${PREFIX}AOM_DOWNLOAD_HASH
-	)
-
-	if(${PREFIX}AOM_DOWNLOAD)
-		if(${PREFIX}AOM_DOWNLOAD_URL STREQUAL "")
-			set(AOM_VERSION "v3.2.0.1")
-			# Figure out download URLs and hashes.
-			if(D_PLATFORM_WINDOWS)
-				if(D_PLATFORM_ARCH_X86)
-					set(AOM_DOWNLOAD_URL "https://github.com/Xaymar/aom/releases/download/${AOM_VERSION}/aom-windows-${D_PLATFORM_BITS}-shared.7z")
-					set(AOM_DOWNLOAD_HASH "2DE0C215C5B00D6761AD2D1FEAFB545C04249B2CBD542F9F7D423E1A26BA59BD")
-				endif()
-			endif()
-
-			# Verify that the platform, architecture and bitness is supported.
-			if(AOM_DOWNLOAD_URL STREQUAL "")
-				message(FATAL_ERROR "${LOGPREFIX}Download for AOM failed, as Platform '${D_PLATFORM_OS}' with architecture '${D_PLATFORM_ARCH}' and bitness '${D_PLATFORM_BITS}' is not supported.")
-				return()
-			endif()
-		else()
-			set(AOM_DOWNLOAD_URL "${${PREFIX}AOM_DOWNLOAD_URL}")
-			set(AOM_DOWNLOAD_HASH "${${PREFIX}AOM_DOWNLOAD_HASH}")
-		endif()
-
-		if(AOM_DOWNLOAD_HASH STREQUAL "")
-			download_project(
-				PROJ AOM
-				PREFIX "autodeps"
-				URL "${AOM_DOWNLOAD_URL}"
-				DOWNLOAD_NO_PROGRESS OFF
-				UPDATE_DISCONNECTED OFF
-			)
-		else()
-			download_project(
-				PROJ AOM
-				PREFIX "autodeps"
-				URL "${AOM_DOWNLOAD_URL}"
-				URL_HASH "SHA256=${AOM_DOWNLOAD_HASH}"
-				DOWNLOAD_NO_PROGRESS OFF
-				UPDATE_DISCONNECTED OFF
-			)
-		endif()
-
-		if(D_PLATFORM_WINDOWS)
-			CacheSet(${PREFIX}AOM_PATH "${AOM_SOURCE_DIR}/msvc2019_64")
-		else()
-			CacheSet(${PREFIX}AOM_PATH "${AOM_SOURCE_DIR}")
-		endif()
-	endif()
-
-	set(AOM_PATH "${${PREFIX}AOM_PATH}" CACHE STRING "Path to AOM")
 endif()
 
 ################################################################################
@@ -963,23 +617,27 @@ endfunction()
 function(feature_frontend RESOLVE)
 	is_feature_enabled(FRONTEND T_CHECK)
 	if(RESOLVE AND T_CHECK)
-		if(NOT HAVE_QT)
+		if(NOT (Qt6_FOUND OR Qt5_FOUND))
 			message(WARNING "${LOGPREFIX}Front-End requires Qt. Disabling...")
 			set_feature_disabled(FRONTEND ON)
-		elseif(NOT HAVE_OBS_FRONTEND_API)
+		elseif(NOT obs-frontend-api_FOUND)
 			message(WARNING "${LOGPREFIX}Front-End requires OBS FrontEnd API. Disabling...")
+			set_feature_disabled(FRONTEND ON)
+		elseif(NOT HAVE_JSON)
+			message(WARNING "${LOGPREFIX}Front-End requires nlohmann::json. Disabling...")
 			set_feature_disabled(FRONTEND ON)
 		endif()
 	elseif(T_CHECK)
 		set(REQUIRE_QT ON PARENT_SCOPE)
 		set(REQUIRE_OBS_FRONTEND_API ON PARENT_SCOPE)
+		set(REQUIRE_JSON ON PARENT_SCOPE)
 	endif()
 endfunction()
 
 function(feature_updater RESOLVE)
 	is_feature_enabled(UPDATER T_CHECK)
 	if(RESOLVE AND T_CHECK)
-		if(NOT HAVE_CURL)
+		if(NOT CURL_FOUND)
 			message(WARNING "${LOGPREFIX}Updater requires CURL. Disabling...")
 			set_feature_disabled(UPDATER ON)
 		elseif(NOT HAVE_JSON)
@@ -1015,84 +673,53 @@ feature_updater(OFF)
 # Fulfill Requirements
 #- OBS: Library
 if(STANDALONE)
-	if(EXISTS "${${PREFIX}OBS_PATH}/cmake/LibObs/LibObsConfig.cmake")
-		find_package(LibObs REQUIRED NO_MODULE
-			PATHS
-				"${${PREFIX}OBS_PATH}/cmake/libobs"
-				"${${PREFIX}OBS_PATH}/cmake/LibObs"
-		)
-	else()
-		find_package(libobs REQUIRED NO_MODULE
-			PATHS
-				"${${PREFIX}OBS_PATH}/cmake/libobs"
-				"${${PREFIX}OBS_PATH}/cmake/LibObs"
+	find_package("libobs" REQUIRED CONFIG)
+elseif(NOT TARGET OBS::libobs)
+	# Add the missing OBS::libobs alias target if possible.
+	add_library(OBS::libobs ALIAS libobs)
+endif()
+if(D_PLATFORM_MAC)
+	# We may need to reconstruct the include directories on MacOS.
+	get_target_property(libobs_INTERFACE_INCLUDE_DIRECTORIES OBS::libobs INTERFACE_INCLUDE_DIRECTORIES)
+	if("${libobs_INTERFACE_INCLUDE_DIRECTORIES}" STREQUAL "libobs_INTERFACE_INCLUDE_DIRECTORIES-NOTFOUND")
+		get_target_property(libobs_IMPORTED_LOCATION_RELEASE OBS::libobs IMPORTED_LOCATION_RELEASE)
+		get_filename_component(libobs_IMPORTED_LOCATION_RELEASE "${libobs_IMPORTED_LOCATION_RELEASE}" DIRECTORY)
+		get_filename_component(libobs_IMPORTED_LOCATION_RELEASE "${libobs_IMPORTED_LOCATION_RELEASE}" DIRECTORY)
+		get_filename_component(libobs_IMPORTED_LOCATION_RELEASE "${libobs_IMPORTED_LOCATION_RELEASE}" DIRECTORY)
+		set(libobs_IMPORTED_LOCATION_RELEASE "${libobs_IMPORTED_LOCATION_RELEASE}/Headers")
+		set_target_properties(OBS::libobs PROPERTIES
+			INTERFACE_INCLUDE_DIRECTORIES
+				"${libobs_IMPORTED_LOCATION_RELEASE}"
 		)
 	endif()
 endif()
 
 #- OBS: Front-End API
-set(HAVE_OBS_FRONTEND_API OFF)
+set(obs-frontend-api_FOUND OFF)
 if(REQUIRE_OBS_FRONTEND_API)
 	if(STANDALONE)
-		if(EXISTS "${${PREFIX}OBS_PATH}/cmake/obs-frontend-api/obs-frontend-apiConfig.cmake")
-			find_package("obs-frontend-api" NO_MODULE
-				PATHS
-					"${${PREFIX}OBS_PATH}/cmake/obs-frontend-api"
-			)
-		elseif((EXISTS "${${PREFIX}OBS_PATH}/bin/${D_PLATFORM_BITS}bit/obs-frontend-api.dll") AND (EXISTS "${${PREFIX}OBS_PATH}/bin/${D_PLATFORM_BITS}bit/obs-frontend-api.lib"))
-			add_library(obs-frontend-api SHARED IMPORTED)
-			set_target_properties(obs-frontend-api PROPERTIES
-				INTERFACE_INCLUDE_DIRECTORIES "${${PREFIX}OBS_PATH}/include"
-				INTERFACE_LINK_LIBRARIES "libobs"
-				IMPORTED_CONFIGURATIONS RELWITHDEBINFO
-				IMPORTED_IMPLIB_RELWITHDEBINFO "${${PREFIX}OBS_PATH}/bin/${D_PLATFORM_BITS}bit/obs-frontend-api.lib"
-				IMPORTED_LOCATION_RELWITHDEBINFO "${${PREFIX}OBS_PATH}/bin/${D_PLATFORM_BITS}bit/obs-frontend-api.dll"
-			)
-		elseif(EXISTS "${${PREFIX}OBS_PATH}/bin/${D_PLATFORM_BITS}bit/libobs-frontend-api.so")
-			add_library(obs-frontend-api SHARED IMPORTED)
-			set_target_properties(obs-frontend-api PROPERTIES
-				INTERFACE_INCLUDE_DIRECTORIES "${${PREFIX}OBS_PATH}/include"
-				INTERFACE_LINK_LIBRARIES "libobs"
-				IMPORTED_CONFIGURATIONS RELWITHDEBINFO
-				IMPORTED_LOCATION_RELWITHDEBINFO "${${PREFIX}OBS_PATH}/bin/${D_PLATFORM_BITS}bit/libobs-frontend-api.so"
-			)
-		else()
-			message(WARNING "${LOGPREFIX}The provided path for libOBS did not contain obs-frontend-api.")
-		endif()
+		find_package("obs-frontend-api" CONFIG)
+		set(obs-frontend-api_FOUND "${obs-frontend-api_FOUND}")
+	elseif(TARGET obs-frontend-api)
+		set(obs-frontend-api_FOUND ON)
 	endif()
-
-	if(TARGET obs-frontend-api)
-		set(HAVE_OBS_FRONTEND_API ON)
+	if(NOT TARGET OBS::obs-frontend-api)
+		add_library(OBS::obs-frontend-api ALIAS obs-frontend-api)
 	endif()
 endif()
 
 #- CURL
-set(HAVE_CURL OFF)
+set(CURL_FOUND OFF)
 if(REQUIRE_CURL)
-	if(D_PLATFORM_WINDOWS)
-		if(STANDALONE)
-			set(CURL_LIBRARIES "${_OBSDEPS_PATH}/bin/libcurl.lib")
-			set(CURL_INCLUDE_DIRS "${_OBSDEPS_PATH}/include")
-		else()
-			# Already defined by OBS
-			set(CURL_LIBRARIES "${CURL_LIB}")
-			set(CURL_INCLUDE_DIRS "${CURL_INCLUDE_DIR}")
-		endif()
-		set(CURL_LIBRARY_DEBUG ${CURL_LIBRARIES})
-		set(CURL_LIBRARY_RELEASE ${CURL_LIBRARIES})
-		set(CURL_INCLUDE_DIR ${CURL_INCLUDE_DIRS})
-		set(CURL_FOUND ON)
-	else()
-		find_package(CURL)
-	endif()
-
-	set(HAVE_CURL ${CURL_FOUND})
+	find_package("CURL")
 endif()
 
 #- FFmpeg
 set(HAVE_FFMPEG OFF)
 if(REQUIRE_FFMPEG)
-	find_package(FFmpeg COMPONENTS avutil avcodec swscale)
+	find_package("FFmpeg"
+		COMPONENTS "avutil" "avcodec" "swscale"
+	)
 	set(HAVE_FFMPEG ${FFmpeg_FOUND})
 endif()
 
@@ -1100,7 +727,7 @@ endif()
 set(HAVE_AOM OFF)
 if(REQUIRE_AOM)
 	if(NOT D_PLATFORM_MAC)
-		find_package(AOM)
+		find_package("AOM")
 		set(HAVE_AOM ${AOM_FOUND})
 	endif()
 endif()
@@ -1159,13 +786,26 @@ if(REQUIRE_NVIDIA_CUDA AND D_PLATFORM_WINDOWS)
 	set(HAVE_NVIDIA_CUDA ON)
 endif()
 
-#- Qt5
-set(HAVE_QT OFF)
+#- Qt
 if(REQUIRE_QT)
-	find_package(Qt5
-		COMPONENTS Widgets Core REQUIRED
+	# Try Qt6 first...
+	find_package("Qt6"
+		COMPONENTS Core Gui Widgets
+		CONFIG
 	)
-	set(HAVE_QT ${Qt5_FOUND})
+
+	# If Qt6 isn't present, try Qt5
+	if(NOT Qt6_FOUND)
+		find_package("Qt5"
+			COMPONENTS Core Gui Widgets
+			CONFIG
+		)
+	endif()
+	if(Qt6_FOUND)
+		message(STATUS "${LOGPREFIX}Using Qt6.")
+	elseif(Qt5_FOUND)
+		message(STATUS "${LOGPREFIX}Using Qt5.")
+	endif()
 endif()
 
 # Verify Requirements
@@ -1191,9 +831,7 @@ feature_updater(ON)
 ################################################################################
 # Code
 ################################################################################
-set(PROJECT_DATA_LOCALE )
-set(PROJECT_DATA_EFFECTS )
-set(PROJECT_DATA_SHADERS )
+set(PROJECT_DATA )
 set(PROJECT_LIBRARIES )
 set(PROJECT_LIBRARIES_DELAYED )
 set(PROJECT_INCLUDE_DIRS )
@@ -1203,6 +841,16 @@ set(PROJECT_PRIVATE_SOURCE )
 set(PROJECT_UI )
 set(PROJECT_UI_SOURCE )
 set(PROJECT_DEFINITIONS )
+set(PROJECT_MEDIA )
+
+# Data
+file(GLOB_RECURSE PROJECT_DATA "data/*")
+
+# Media
+file(GLOB_RECURSE PROJECT_MEDIA "media/*")
+
+# Templates
+file(GLOB_RECURSE PROJECT_TEMPLATES "templates/*")
 
 # Configure Files
 configure_file(
@@ -1234,25 +882,22 @@ if(D_PLATFORM_WINDOWS) # Windows Support
 	set(PROJECT_LEGAL_TRADEMARKS_2 "")
 
 	configure_file(
-		"templates/version.rc.in"
+		"templates/windows/version.rc.in"
 		"generated/version.rc"
-		@ONLY
 	)
-	LIST(APPEND PROJECT_TEMPLATES "templates/version.rc.in")
 	LIST(APPEND PROJECT_PRIVATE_GENERATED "${PROJECT_BINARY_DIR}/generated/version.rc")
 endif()
 
 # Minimum Dependencies
-list(APPEND PROJECT_LIBRARIES libobs)
+list(APPEND PROJECT_LIBRARIES OBS::libobs)
 
 # Components
-if(HAVE_CURL)
+if(CURL_FOUND)
 	list(APPEND PROJECT_PRIVATE_SOURCE
 		"source/util/util-curl.hpp"
 		"source/util/util-curl.cpp"
 	)
-	list(APPEND PROJECT_LIBRARIES ${CURL_LIBRARY_RELEASE})
-	list(APPEND PROJECT_INCLUDE_DIRS ${CURL_INCLUDE_DIR})
+	list(APPEND PROJECT_LIBRARIES CURL::libcurl)
 endif()
 
 if(HAVE_FFMPEG)
@@ -1363,12 +1008,16 @@ if(HAVE_NVIDIA_CUDA)
 	)
 endif()
 
-if(REQUIRE_OBS_FRONTEND_API AND HAVE_OBS_FRONTEND_API)
-	list(APPEND PROJECT_LIBRARIES obs-frontend-api)
+if(REQUIRE_OBS_FRONTEND_API AND obs-frontend-api_FOUND)
+	list(APPEND PROJECT_LIBRARIES OBS::obs-frontend-api)
 endif()
 
-if(REQUIRE_QT AND HAVE_QT)
-	list(APPEND PROJECT_LIBRARIES Qt5::Core Qt5::Widgets)
+if(REQUIRE_QT)
+	if(Qt5_FOUND)
+		list(APPEND PROJECT_LIBRARIES Qt5::Core Qt5::Gui Qt5::Widgets)
+	elseif(Qt6_FOUND)
+		list(APPEND PROJECT_LIBRARIES Qt6::Core Qt6::Gui Qt6::Widgets)
+	endif()
 endif()
 
 ################################################################################
@@ -1377,6 +1026,8 @@ endif()
 
 # Core
 list(APPEND PROJECT_PRIVATE_SOURCE
+	"source/warning-disable.hpp"
+	"source/warning-enable.hpp"
 	"source/configuration.hpp"
 	"source/configuration.cpp"
 	"source/common.hpp"
@@ -1467,8 +1118,6 @@ list(APPEND PROJECT_INCLUDE_DIRS
 	"${PROJECT_BINARY_DIR}/generated"
 	"${PROJECT_SOURCE_DIR}/source"
 )
-file(GLOB_RECURSE PROJECT_EXAMPLES "data/examples/*")
-list(APPEND PROJECT_DATA ${PROJECT_EXAMPLES})
 
 # Encoder/FFmpeg
 is_feature_enabled(ENCODER_FFMPEG T_CHECK)
@@ -1938,7 +1587,7 @@ if(D_PLATFORM_WINDOWS)
 		NOKEYSTATES
 		NOSYSCOMMANDS
 		NORASTEROPS
-		NOSHOWWINDOW
+		#NOSHOWWINDOW
 		NOATOM
 		NOCLIPBOARD
 		NOCOLOR
@@ -1998,6 +1647,8 @@ set(PROJECT_FILES
 	# UI-only (empty if not enabled)
 	${PROJECT_UI}
 	${PROJECT_UI_SOURCE}
+	# Media
+	${PROJECT_MEDIA}
 )
 
 # Set source groups for IDE generators.
@@ -2006,15 +1657,16 @@ source_group(TREE "${PROJECT_SOURCE_DIR}/source" PREFIX "Source" FILES ${PROJECT
 source_group(TREE "${PROJECT_BINARY_DIR}/generated" PREFIX "Source" FILES ${PROJECT_PRIVATE_GENERATED})
 source_group(TREE "${PROJECT_SOURCE_DIR}/templates" PREFIX "Templates" FILES ${PROJECT_TEMPLATES})
 source_group(TREE "${PROJECT_SOURCE_DIR}/ui" PREFIX "User Interface" FILES ${PROJECT_UI})
+source_group(TREE "${PROJECT_SOURCE_DIR}/media" PREFIX "Media" FILES ${PROJECT_MEDIA})
 
 # Prevent unwanted files from being built as source.
-set_source_files_properties(${PROJECT_DATA} ${PROJECT_TEMPLATES} ${PROJECT_UI} PROPERTIES
+set_source_files_properties(${PROJECT_DATA} ${PROJECT_TEMPLATES} ${PROJECT_UI} ${PROJECT_MEDIA} PROPERTIES
 	HEADER_FILE_ONLY ON
 )
 
 # Prevent non-UI files from being Qt'd
-if(HAVE_QT)
-	set_source_files_properties(${PROJECT_DATA} ${PROJECT_TEMPLATES} ${PROJECT_PRIVATE_GENERATED} ${PROJECT_PRIVATE_SOURCE} PROPERTIES
+if(Qt5_Found OR Qt6_FOUND)
+	set_source_files_properties(${PROJECT_DATA} ${PROJECT_TEMPLATES} ${PROJECT_MEDIA} ${PROJECT_PRIVATE_GENERATED} ${PROJECT_PRIVATE_SOURCE} PROPERTIES
 		SKIP_AUTOGEN ON
 		SKIP_AUTOMOC ON
 		SKIP_AUTORCC ON
@@ -2024,9 +1676,9 @@ endif()
 
 # Register the library
 add_library(${PROJECT_NAME} MODULE ${PROJECT_FILES}) # We are a module for libOBS.
+target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_LIBRARIES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_INCLUDE_DIRS})
 target_compile_definitions(${PROJECT_NAME} PRIVATE ${PROJECT_DEFINITIONS})
-target_link_libraries(${PROJECT_NAME} ${PROJECT_LIBRARIES})
 
 # Always generate position independent code.
 set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -2061,15 +1713,47 @@ if(D_PLATFORM_WINDOWS AND ((CMAKE_CXX_COMPILER_ID STREQUAL "MSVC") OR (CMAKE_CXX
 		$<$<CONFIG:MinSizeRel>:/MD>
 	)
 
-	# - Enable most useful warnings.
+	# - Treat Warnings as Errors
+	target_compile_options(${PROJECT_NAME} PRIVATE "/Wall")
+
+	# - Disable useless warnings
 	set(DISABLED_WARNINGS
-		"/wd4061" "/wd4100" "/wd4180" "/wd4201" "/wd4464" "/wd4505" "/wd4514"
-		"/wd4571" "/wd4623" "/wd4625" "/wd4626" "/wd4668" "/wd4710" "/wd4774"
-		"/wd4820" "/wd5026" "/wd5027" "/wd5039" "/wd5045" "/wd26812"
+		# Don't warn about unused variables, parameters, labels, functions, or typedefs.
+		"4100"
+		"4101"
+		"4102"
+		"4505"
+		"4514"
+		"5245"
+		# Don't warn about unreferenced variables or parameters which are assigned/initialized.
+		"4189"
+		# Don't warn about not-explicitly-handled enumeration identifiers
+		"4061"
+		# Ignore automatic padding warnings.
+		"4820"
+		# Ignore assignment/move/copy being implicit '= delete;'.
+		"4623"
+		"4625"
+		"4626"
+		"5026"
+		"5027"
+		# Relative include paths are fine.
+		"4464"
+		# Buggy warning: printf expects string literal
+		"4774"
+		# Buggy warning: subobject initialization should be wrapped in braces
+		"5246"
+		# Ignore undefined, unused or unreferenced pre-processor macros
+		"4688"
+		# Ignore non-inlined functions
+		"4710"
+		# Ignore Spectre mitigation insertions
+		"5045"
+		# Ignore inserted padding.
+		"4324"
 	)
-	target_compile_options(${PROJECT_NAME} PRIVATE "/W3")
 	foreach(WARN ${DISABLED_WARNINGS})
-		target_compile_options(${PROJECT_NAME} PRIVATE "${WARN}")
+		target_compile_options(${PROJECT_NAME} PRIVATE "/wd${WARN}")
 	endforeach()
 
 	# - Require enabled instruction sets.
@@ -2132,9 +1816,37 @@ elseif(D_PLATFORM_LINUX AND ((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") OR (CMAKE_
 	# GCC/Clang
 	message(STATUS "${LOGPREFIX}Applying custom flags for GCC/Clang style build.")
 
-	# - Enable most useful warnings.
+	# - Enable all warnings.
 	target_compile_options(${PROJECT_NAME} PRIVATE "-Wall")
 	target_compile_options(${PROJECT_NAME} PRIVATE "-Wextra")
+
+	# - Disable useless warnings
+	set(DISABLED_WARNINGS
+		# Don't warn about unused variables, parameters, labels, functions, or typedefs.
+		"unused-function"
+		"unused-label"
+		"unused-local-typedefs"
+		"unused-parameter"
+		"unused-result"
+		"unused-const-variable"
+		"unused-variable"
+		"unused-value"
+		# Don't warn about unreferenced variables or parameters which are assigned/initialized.
+		"unused-but-set-parameter"
+		"unused-but-set-variable"
+		# Don't warn about not-explicitly-handled enumeration identifiers
+		"switch"
+		# Ignore automatic padding warnings.
+		"padded"
+		# Ignore implicit '= delete;'.
+		# Ignore extra arguments for printf
+		"format-extra-args"
+		# Ignore undefined, unused or unreferenced pre-processor macros
+		"unused-macros"
+	)
+	foreach(WARN ${DISABLED_WARNINGS})
+		target_compile_options(${PROJECT_NAME} PRIVATE "-Wno-${WARN}")
+	endforeach()
 
 	# - Require enabled instruction sets.
 	if(${PREFIX}TARGET_NATIVE)
@@ -2197,13 +1909,11 @@ elseif(D_PLATFORM_LINUX AND ((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") OR (CMAKE_
 		else()
 			target_compile_options(${PROJECT_NAME} PRIVATE
 				"-ffp-model=fast"
-				"-ffp-contract=on"
 			)
 		endif()
 	else()
 		target_compile_options(${PROJECT_NAME} PRIVATE
 			"-ffp-model=precise"
-			"-ffp-contract=on"
 		)
 	endif()
 
@@ -2238,15 +1948,26 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 	IMPORT_PREFIX ""
 )
 
-# Set file version (on anything but MacOS)
-if(NOT D_PLATFORM_MAC)
+# Set file version
+set_target_properties(${PROJECT_NAME} PROPERTIES
+	MACHO_COMPATIBILITY_VERSION ${_VERSION_MAJOR}.${_VERSION_MINOR}
+	MACHO_CURRENT_VERSION ${PROJECT_VERSION}
+	SOVERSION ${_VERSION_MAJOR}.${_VERSION_MINOR}
+	VERSION ${PROJECT_VERSION}
+)
+
+# Enable Qt if needed
+if(Qt5_FOUND OR Qt6_FOUND)
 	set_target_properties(${PROJECT_NAME} PROPERTIES
-		VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}.${PROJECT_VERSION_TWEAK}
-		SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}.${PROJECT_VERSION_TWEAK}
+		AUTOUIC ON
+		AUTOUIC_SEARCH_PATHS "${PROJECT_SOURCE_DIR};${PROJECT_SOURCE_DIR}/ui"
+		AUTOMOC ON
+		AUTORCC ON
+		AUTOGEN_BUILD_DIR "${PROJECT_BINARY_DIR}/generated"
 	)
 endif()
 
-# Delay-Loading on Microsoft Visual C++
+# Windows exclusive changes
 if(D_PLATFORM_WINDOWS)
 	foreach(DELAYLOAD ${PROJECT_LIBRARIES_DELAYED})
 		get_target_property(_lf ${PROJECT_NAME} LINK_FLAGS)
@@ -2258,23 +1979,56 @@ if(D_PLATFORM_WINDOWS)
 	endforeach()
 endif()
 
-# Enable Qt if needed
-if(HAVE_QT)
-	set_target_properties(${PROJECT_NAME} PROPERTIES
-		AUTOUIC ON
-		AUTOUIC_SEARCH_PATHS "${PROJECT_SOURCE_DIR};${PROJECT_SOURCE_DIR}/ui"
-		AUTOMOC ON
-		AUTORCC ON
-		AUTOGEN_BUILD_DIR "${PROJECT_BINARY_DIR}/generated"
-	)
-endif()
-
-# MacOS: Disable automatic Code Signing in Xcode
+# MacOS exclusive Changes
 if(D_PLATFORM_MAC)
 	set_target_properties(${PROJECT_NAME} PROPERTIES
+		# No automatic code signing in XCode
 		XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
 		XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
+		# @rpath in installed binaries
+		INSTALL_RPATH "@executable_path/../Frameworks/;@loader_path/../Frameworks/;@loader_path/../Resources/"
 	)
+	if(STANDALONE)
+		set_target_properties(${PROJECT_NAME} PROPERTIES
+			# @rpath in built binaries
+			BUILD_WITH_INSTALL_RPATH ON
+		)
+	endif()
+
+	# Bundle exporting
+	if(STRUCTURE_BUNDLE)
+		# Proper location for resources in Bundles
+		foreach(FILE IN LISTS PROJECT_DATA)
+			cmake_path(ABSOLUTE_PATH FILE OUTPUT_VARIABLE FILE_PATH)
+			cmake_path(RELATIVE_PATH FILE_PATH BASE_DIRECTORY "${PROJECT_SOURCE_DIR}/data/")
+			cmake_path(GET FILE_PATH PARENT_PATH FILE_PATH)
+			set_source_files_properties("${FILE}" PROPERTIES
+				MACOSX_PACKAGE_LOCATION "Resources/${FILE_PATH}"
+			)
+		endforeach()
+
+		# Bundle Icon
+		set_source_files_properties("media/icon.png" PROPERTIES
+			MACOSX_PACKAGE_LOCATION "Resources"
+		)
+
+		# Bundle Information
+		set(MACOSX_BUNDLE_BUNDLE_NAME "${PROJECT_NAME}")
+		set(MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
+		set(MACOSX_BUNDLE_COPYRIGHT "${PROJECT_COPYRIGHT}")
+		set(MACOSX_BUNDLE_GUI_IDENTIFIER "${PROJECT_IDENTIFER}")
+		set(MACOSX_BUNDLE_ICON_FILE "icon.png")
+		set(MACOSX_BUNDLE_VERSION_STRING "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}")
+		set(MACOSX_BUNDLE_LONG_VERSION_STRING "${_VERSION}")
+		set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
+		set_target_properties(${PROJECT_NAME} PROPERTIES
+			BUNDLE ON
+			BUNDLE_EXTENSION "plugin"
+			OUTPUT_NAME ${PROJECT_NAME}
+			MACOSX_BUNDLE_INFO_PLIST "${PROJECT_SOURCE_DIR}/templates/macos/Info.plist.in"
+			XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${MACOSX_BUNDLE_GUI_IDENTIFIER}"
+		)
+	endif()
 endif()
 
 ################################################################################
@@ -2295,64 +2049,6 @@ if(T_CHECK AND HAVE_CLANG)
 		TARGETS ${PROJECT_NAME}
 		DEPENDENCY
 		VERSION 14.0.0
-	)
-endif()
-
-# Apple otool
-if(D_PLATFORM_MAC)
-	# OBS
-	mac_get_linker_id(TARGET libobs OUTPUT T_OBS_LINK)
-	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-		COMMAND install_name_tool ARGS -change "${T_OBS_LINK}" "@executable_path/../Frameworks/libobs.0.dylib" $<TARGET_FILE:${PROJECT_NAME}>
-	)
-	message(STATUS "${LOGPREFIX}Added post-build step for adjusting libobs linking path.")
-
-	# OBS Front-End API
-	if(REQUIRE_OBS_FRONTEND_API AND HAVE_OBS_FRONTEND_API)
-		mac_get_linker_id(TARGET obs-frontend-api OUTPUT T_OBSFE_LINK)
-		add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-			COMMAND install_name_tool ARGS -change "${T_OBSFE_LINK}" "@executable_path/../Frameworks/libobs-frontend-api.dylib" $<TARGET_FILE:${PROJECT_NAME}>
-		)
-		message(STATUS "${LOGPREFIX}Added post-build step for adjusting libobs-frontend-api linking path.")
-	endif()
-
-	# Qt5
-	if(REQUIRE_QT AND HAVE_QT)
-		# Figure out the linker location for Qt5::Core
-		mac_get_linker_id(TARGET Qt5::Core OUTPUT T_QT5CORE_LINK)
-
-		# Figure out the linker location for Qt5::Gui
-		mac_get_linker_id(TARGET Qt5::Gui OUTPUT T_QT5GUI_LINK)
-
-		# Figure out the linker location for Qt5::Widsgets
-		mac_get_linker_id(TARGET Qt5::Widgets OUTPUT T_QT5WIDGETS_LINK)
-
-		add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-		# - QtCore
-			COMMAND install_name_tool ARGS -change "${T_QT5CORE_LINK}" "@executable_path/../Frameworks/QtCore.framework/Versions/5/QtCore" $<TARGET_FILE:${PROJECT_NAME}>
-		# - QtGui
-			COMMAND install_name_tool ARGS -change "${T_QT5GUI_LINK}" "@executable_path/../Frameworks/QtGui.framework/Versions/5/QtGui" $<TARGET_FILE:${PROJECT_NAME}>
-		# - QtWidgets
-			COMMAND install_name_tool ARGS -change "${T_QT5WIDGETS_LINK}" "@executable_path/../Frameworks/QtWidgets.framework/Versions/5/QtWidgets" $<TARGET_FILE:${PROJECT_NAME}>
-		)
-		message(STATUS "${LOGPREFIX}Added post-build step for adjusting Qt5::Core linking path (Found: ${Qt5_DIR} resolved to ${T_QT5CORE_LINK}).")
-		message(STATUS "${LOGPREFIX}Added post-build step for adjusting Qt5::Gui linking path (Found: ${Qt5_DIR} resolved to ${T_QT5GUI_LINK}).")
-		message(STATUS "${LOGPREFIX}Added post-build step for adjusting Qt5::Widgets linking path (Found: ${Qt5_DIR} resolved to ${T_QT5WIDGETS_LINK}).")
-	endif()
-endif()
-
-# Code Sign
-if(HAVE_CODESIGN)
-	set(_CODESIGN_TIMESTAMP "")
-	if(${PREFIX}CODESIGN_TIMESTAMPS)
-		set(_CODESIGN_TIMESTAMP "TIMESTAMPS")
-	endif()
-	codesign(
-		TARGETS ${PROJECT_NAME}
-		CERTIFICATE_FILE "${_CODESIGN_FILE}"
-		CERTIFICATE_NAME "${_CODESIGN_NAME}"
-		CERTIFICATE_PASS "${_CODESIGN_PASS}"
-		${_CODESIGN_TIMESTAMP}
 	)
 endif()
 
@@ -2474,19 +2170,29 @@ if(STANDALONE)
 			)
 		endif()
 	elseif(D_PLATFORM_MAC)
-		install(
-			TARGETS ${PROJECT_NAME}
-			RUNTIME DESTINATION "${PROJECT_NAME}/bin/" COMPONENT StreamFX
-			LIBRARY DESTINATION "${PROJECT_NAME}/bin/" COMPONENT StreamFX
-			PERMISSIONS WORLD_EXECUTE;WORLD_READ;OWNER_EXECUTE;OWNER_READ;OWNER_WRITE;GROUP_EXECUTE;GROUP_READ;GROUP_WRITE
-		)
-		install(
-			DIRECTORY "data/"
-			DESTINATION "${PROJECT_NAME}/data/"
-			COMPONENT StreamFX
-			FILE_PERMISSIONS WORLD_EXECUTE;WORLD_READ;OWNER_EXECUTE;OWNER_READ;OWNER_WRITE;GROUP_EXECUTE;GROUP_READ;GROUP_WRITE
-			DIRECTORY_PERMISSIONS WORLD_EXECUTE;WORLD_READ;OWNER_EXECUTE;OWNER_READ;OWNER_WRITE;GROUP_EXECUTE;GROUP_READ;GROUP_WRITE
-		)
+		if(STRUCTURE_BUNDLE)
+			install(
+				TARGETS ${PROJECT_NAME}
+				RUNTIME DESTINATION "." COMPONENT StreamFX
+				LIBRARY DESTINATION "." COMPONENT StreamFX
+				BUNDLE DESTINATION "." COMPONENT StreamFX
+				PERMISSIONS WORLD_EXECUTE;WORLD_READ;OWNER_EXECUTE;OWNER_READ;OWNER_WRITE;GROUP_EXECUTE;GROUP_READ;GROUP_WRITE
+			)
+		else()
+			install(
+				TARGETS ${PROJECT_NAME}
+				RUNTIME DESTINATION "${PROJECT_NAME}/bin/" COMPONENT StreamFX
+				LIBRARY DESTINATION "${PROJECT_NAME}/bin/" COMPONENT StreamFX
+				PERMISSIONS WORLD_EXECUTE;WORLD_READ;OWNER_EXECUTE;OWNER_READ;OWNER_WRITE;GROUP_EXECUTE;GROUP_READ;GROUP_WRITE
+			)
+			install(
+				DIRECTORY "data/"
+				DESTINATION "${PROJECT_NAME}/data/"
+				COMPONENT StreamFX
+				FILE_PERMISSIONS WORLD_EXECUTE;WORLD_READ;OWNER_EXECUTE;OWNER_READ;OWNER_WRITE;GROUP_EXECUTE;GROUP_READ;GROUP_WRITE
+				DIRECTORY_PERMISSIONS WORLD_EXECUTE;WORLD_READ;OWNER_EXECUTE;OWNER_READ;OWNER_WRITE;GROUP_EXECUTE;GROUP_READ;GROUP_WRITE
+			)
+		endif()
 	endif()
 else()
 	if(COMMAND setup_plugin_target)
@@ -2520,7 +2226,7 @@ endif()
 if(STANDALONE)
 	# Packaging
 	if(NOT PACKAGE_SUFFIX)
-		set(_PACKAGE_SUFFIX_OVERRIDE "${VERSION_STRING}")
+		set(_PACKAGE_SUFFIX_OVERRIDE "${_VERSION_THIN}")
 	else()
 		set(_PACKAGE_SUFFIX_OVERRIDE "${PACKAGE_SUFFIX}")
 	endif()
@@ -2562,47 +2268,22 @@ if(STANDALONE)
 			get_filename_component(ISS_MSVCHELPER_PATH "${msvc-redist-helper_BUILD_DIR}" ABSOLUTE)
 			file(TO_NATIVE_PATH "${ISS_MSVCHELPER_PATH}" ISS_MSVCHELPER_PATH)
 
-			if(HAVE_CODESIGN)
-				codesign_command_win32(
-					SHA1
-					RETURN_BIN ISS_CODESIGN_BIN_SHA1
-					RETURN_ARGS ISS_CODESIGN_CMD_SHA1
-					CERTIFICATE_FILE "${_CODESIGN_FILE}"
-					CERTIFICATE_NAME "${_CODESIGN_NAME}"
-					CERTIFICATE_PASS "${_CODESIGN_PASS}"
-					${_CODESIGN_TIMESTAMP}
-				)
-				codesign_command_win32(
-					SHA2 APPEND
-					RETURN_BIN ISS_CODESIGN_BIN_SHA2
-					RETURN_ARGS ISS_CODESIGN_CMD_SHA2
-					CERTIFICATE_FILE "${_CODESIGN_FILE}"
-					CERTIFICATE_NAME "${_CODESIGN_NAME}"
-					CERTIFICATE_PASS "${_CODESIGN_PASS}"
-					${_CODESIGN_TIMESTAMP}
-				)
-				list(JOIN ISS_CODESIGN_CMD_SHA1 " " ISS_CODESIGN_CMD_SHA1)
-				list(JOIN ISS_CODESIGN_CMD_SHA2 " " ISS_CODESIGN_CMD_SHA2)
-
-				configure_file(
-					"templates/installer-signed.iss.in"
-					"installer.iss"
-				)
-			else()
-				configure_file(
-					"templates/installer.iss.in"
-					"installer.iss"
-				)
-			endif()
+			configure_file(
+				"templates/windows/installer.iss.in"
+				"installer.iss"
+			)
 		endif()
 
 		# Apple MacOS
 		if(D_PLATFORM_MAC)
 			# .pkg Installer
+			set(PACKAGES_PATH_NAME "${PROJECT_NAME}")
+			if(STRUCTURE_BUNDLE)
+				set(PACKAGES_PATH_NAME "${PACKAGES_PATH_NAME}.plugin")
+			endif()
 			configure_file(
-				"templates/installer.pkgproj.in"
+				"templates/macos/installer.pkgproj.in"
 				"installer.pkgproj"
-				@ONLY
 			)
 		endif()
 	endif()

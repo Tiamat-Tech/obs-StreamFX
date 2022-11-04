@@ -1,5 +1,5 @@
 // FFMPEG Video Encoder Integration for OBS Studio
-// Copyright (c) 2019 Michael Fabian Dirks <info@xaymar.com>
+// Copyright (c) 2019-2022 Michael Fabian Dirks <info@xaymar.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -21,12 +21,29 @@
 
 #include "encoder-ffmpeg.hpp"
 #include "strings.hpp"
-#include <sstream>
 #include "codecs/hevc.hpp"
 #include "ffmpeg/tools.hpp"
 #include "handlers/debug_handler.hpp"
 #include "obs/gs/gs-helper.hpp"
 #include "plugin.hpp"
+
+#include "warning-disable.hpp"
+#include <sstream>
+#include "warning-enable.hpp"
+
+extern "C" {
+#include "warning-disable.hpp"
+#include <obs-avc.h>
+#include "warning-enable.hpp"
+
+#include "warning-disable.hpp"
+#include <libavcodec/avcodec.h>
+#include <libavutil/dict.h>
+#include <libavutil/frame.h>
+#include <libavutil/opt.h>
+#include <libavutil/pixdesc.h>
+#include "warning-enable.hpp"
+}
 
 #ifdef ENABLE_ENCODER_FFMPEG_AMF
 #include "handlers/amf_h264_handler.hpp"
@@ -46,18 +63,6 @@
 #include "handlers/dnxhd_handler.hpp"
 #endif
 
-extern "C" {
-#pragma warning(push)
-#pragma warning(disable : 4244)
-#include <obs-avc.h>
-#include <libavcodec/avcodec.h>
-#include <libavutil/dict.h>
-#include <libavutil/frame.h>
-#include <libavutil/opt.h>
-#include <libavutil/pixdesc.h>
-#pragma warning(pop)
-}
-
 #ifdef WIN32
 #include "ffmpeg/hwapi/d3d11.hpp"
 #endif
@@ -69,6 +74,8 @@ extern "C" {
 #define ST_KEY_FFMPEG_CUSTOMSETTINGS "FFmpeg.CustomSettings"
 #define ST_I18N_FFMPEG_THREADS ST_I18N_FFMPEG ".Threads"
 #define ST_KEY_FFMPEG_THREADS "FFmpeg.Threads"
+#define ST_I18N_FFMPEG_FRAMERATE ST_I18N_FFMPEG ".Framerate"
+#define ST_KEY_FFMPEG_FRAMERATE "FFmpeg.Framerate"
 #define ST_I18N_FFMPEG_GPU ST_I18N_FFMPEG ".GPU"
 #define ST_KEY_FFMPEG_GPU "FFmpeg.GPU"
 
@@ -129,15 +136,23 @@ ffmpeg_instance::ffmpeg_instance(obs_data_t* settings, obs_encoder_t* self, bool
 		throw std::runtime_error("Failed to create encoder context.");
 	}
 
-	// Create 8MB of precached Packet data for use later on.
-	av_init_packet(&_packet);
-	av_new_packet(&_packet, 8 * 1024 * 1024); // 8 MB precached Packet size.
+	// Allocate a small packet for later use.
+	_packet = {av_packet_alloc(), [](AVPacket* ptr) { av_packet_free(&ptr); }};
+	av_new_packet(_packet.get(), 8 * 1024 * 1024); // 8 MiB is usually enough for compressed data.
 
 	// Initialize
 	if (is_hw) {
 		initialize_hw(settings);
 	} else {
 		initialize_sw(settings);
+	}
+
+	{ // Set up framerate division.
+		_framerate_divisor = obs_data_get_int(settings, ST_KEY_FFMPEG_FRAMERATE);
+
+		_context->ticks_per_frame = 1;
+		_context->time_base.num *= _framerate_divisor;
+		_context->framerate.den *= _framerate_divisor;
 	}
 
 	// Update settings
@@ -158,18 +173,17 @@ ffmpeg_instance::~ffmpeg_instance()
 		// Flush encoders that require it.
 		if ((_codec->capabilities & AV_CODEC_CAP_DELAY) != 0) {
 			avcodec_send_frame(_context, nullptr);
-			while (avcodec_receive_packet(_context, &_packet) >= 0) {
+			while (avcodec_receive_packet(_context, _packet.get()) >= 0) {
 				avcodec_send_frame(_context, nullptr);
 				std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			}
 		}
 
 		// Close and free context.
-		avcodec_close(_context);
 		avcodec_free_context(&_context);
 	}
 
-	av_packet_unref(&_packet);
+	av_packet_unref(_packet.get());
 
 	_scaler.finalize();
 }
@@ -258,8 +272,10 @@ bool ffmpeg_instance::update(obs_data_t* settings)
 			bool    is_seconds = (kf_type == 0);
 
 			if (is_seconds) {
-				_context->gop_size = static_cast<int>(obs_data_get_double(settings, ST_KEY_KEYFRAMES_INTERVAL_SECONDS)
-													  * (ovi.fps_num / ovi.fps_den));
+				double framerate =
+					static_cast<double>(ovi.fps_num) / (static_cast<double>(ovi.fps_den) * _framerate_divisor);
+				_context->gop_size =
+					static_cast<int>(obs_data_get_double(settings, ST_KEY_KEYFRAMES_INTERVAL_SECONDS) * framerate);
 			} else {
 				_context->gop_size = static_cast<int>(obs_data_get_int(settings, ST_KEY_KEYFRAMES_INTERVAL_FRAMES));
 			}
@@ -372,6 +388,10 @@ bool ffmpeg_instance::encode_audio(struct encoder_frame* frame, struct encoder_p
 
 bool ffmpeg_instance::encode_video(struct encoder_frame* frame, struct encoder_packet* packet, bool* received_packet)
 {
+	if ((_framerate_divisor > 1) && (frame->pts % _framerate_divisor != 0)) {
+		return true;
+	}
+
 	std::shared_ptr<AVFrame> vframe = pop_free_frame(); // Retrieve an empty frame.
 
 	// Convert frame.
@@ -408,6 +428,11 @@ bool ffmpeg_instance::encode_video(struct encoder_frame* frame, struct encoder_p
 bool ffmpeg_instance::encode_video(uint32_t handle, int64_t pts, uint64_t lock_key, uint64_t* next_key,
 								   struct encoder_packet* packet, bool* received_packet)
 {
+	if ((_framerate_divisor > 1) && (pts % _framerate_divisor != 0)) {
+		*next_key = lock_key;
+		return true;
+	}
+
 #ifdef D_PLATFORM_WINDOWS
 	if (handle == GS_INVALID_HANDLE) {
 		DLOG_ERROR("Received invalid handle.");
@@ -472,7 +497,7 @@ void ffmpeg_instance::initialize_sw(obs_data_t* settings)
 		_scaler.set_target_format(pix_fmt_target);
 
 		// Create Scaler
-		if (!_scaler.initialize(SWS_POINT)) {
+		if (!_scaler.initialize(SWS_SINC | SWS_FULL_CHR_H_INT | SWS_FULL_CHR_H_INP | SWS_ACCURATE_RND | SWS_BITEXACT)) {
 			std::stringstream sstr;
 			sstr << "Initializing scaler failed for conversion from '"
 				 << ::streamfx::ffmpeg::tools::get_pixel_format_name(_scaler.get_source_format()) << "' to '"
@@ -578,7 +603,7 @@ std::shared_ptr<AVFrame> ffmpeg_instance::pop_used_frame()
 
 bool ffmpeg_instance::get_extra_data(uint8_t** data, size_t* size)
 {
-	if (_extra_data.size() == 0)
+	if (!_have_first_frame)
 		return false;
 
 	*data = _extra_data.data();
@@ -588,7 +613,7 @@ bool ffmpeg_instance::get_extra_data(uint8_t** data, size_t* size)
 
 bool ffmpeg_instance::get_sei_data(uint8_t** data, size_t* size)
 {
-	if (_sei_data.size() == 0)
+	if (!_have_first_frame)
 		return false;
 
 	*data = _sei_data.data();
@@ -608,11 +633,11 @@ int ffmpeg_instance::receive_packet(bool* received_packet, struct encoder_packet
 {
 	int res = 0;
 
-	av_packet_unref(&_packet);
+	av_packet_unref(_packet.get());
 
 	{
 		auto gctx = streamfx::obs::gs::context();
-		res       = avcodec_receive_packet(_context, &_packet);
+		res       = avcodec_receive_packet(_context, _packet.get());
 	}
 	if (res != 0) {
 		return res;
@@ -625,7 +650,7 @@ int ffmpeg_instance::receive_packet(bool* received_packet, struct encoder_packet
 			uint8_t*    tmp_sei;
 			std::size_t sz_packet, sz_header, sz_sei;
 
-			obs_extract_avc_headers(_packet.data, static_cast<size_t>(_packet.size), &tmp_packet, &sz_packet,
+			obs_extract_avc_headers(_packet->data, static_cast<size_t>(_packet->size), &tmp_packet, &sz_packet,
 									&tmp_header, &sz_header, &tmp_sei, &sz_sei);
 
 			if (sz_header) {
@@ -646,7 +671,7 @@ int ffmpeg_instance::receive_packet(bool* received_packet, struct encoder_packet
 			bfree(tmp_header);
 			bfree(tmp_sei);
 		} else if (_codec->id == AV_CODEC_ID_HEVC) {
-			hevc::extract_header_sei(_packet.data, static_cast<size_t>(_packet.size), _extra_data, _sei_data);
+			hevc::extract_header_sei(_packet->data, static_cast<size_t>(_packet->size), _extra_data, _sei_data);
 		} else if (_context->extradata != nullptr) {
 			_extra_data.resize(static_cast<size_t>(_context->extradata_size));
 			std::memcpy(_extra_data.data(), _context->extradata, static_cast<size_t>(_context->extradata_size));
@@ -660,25 +685,28 @@ int ffmpeg_instance::receive_packet(bool* received_packet, struct encoder_packet
 
 	// Build packet for use in OBS.
 	packet->type     = OBS_ENCODER_VIDEO;
-	packet->pts      = _packet.pts;
-	packet->dts      = _packet.dts;
-	packet->data     = _packet.data;
-	packet->size     = static_cast<size_t>(_packet.size);
-	packet->keyframe = !!(_packet.flags & AV_PKT_FLAG_KEY);
+	packet->pts      = _packet->pts;
+	packet->dts      = _packet->dts;
+	packet->data     = _packet->data;
+	packet->size     = static_cast<size_t>(_packet->size);
+	packet->keyframe = !!(_packet->flags & AV_PKT_FLAG_KEY);
 	*received_packet = true;
 
 	// Figure out priority and drop_priority.
 	// In theory, this is done by OBS, but its not doing a great job.
 	packet->priority      = packet->keyframe ? 3 : 2;
 	packet->drop_priority = 3;
-	for (size_t idx = 0, edx = _packet.side_data_elems; idx < edx; idx++) {
-		auto& side_data = _packet.side_data[idx];
-		if (side_data.type == AV_PKT_DATA_QUALITY_STATS) {
+	for (size_t idx = 0, edx = static_cast<size_t>(_packet->side_data_elems); idx < edx; idx++) {
+		auto& side_data = _packet->side_data[idx];
+		if (side_data.type == AV_PKT_DATA_NEW_EXTRADATA) {
+			_extra_data.resize(side_data.size);
+			std::memcpy(_extra_data.data(), side_data.data, side_data.size);
+		} else if (side_data.type == AV_PKT_DATA_QUALITY_STATS) {
 			// Decisions based on picture type, if present.
 			switch (side_data.data[sizeof(uint32_t)]) {
 			case AV_PICTURE_TYPE_I:  // I-Frame
 			case AV_PICTURE_TYPE_SI: // Switching I-Frame
-				if (_packet.flags & AV_PKT_FLAG_KEY) {
+				if (_packet->flags & AV_PKT_FLAG_KEY) {
 					// Recovery only via IDR-Frame.
 					packet->priority      = 3; // OBS_NAL_PRIORITY_HIGHEST
 					packet->drop_priority = 2; // OBS_NAL_PRIORITY_HIGH
@@ -824,7 +852,7 @@ const AVCodecContext* ffmpeg_instance::get_avcodeccontext()
 	return _context;
 }
 
-void ffmpeg_instance::parse_ffmpeg_commandline(std::string text)
+void ffmpeg_instance::parse_ffmpeg_commandline(std::string_view text)
 {
 	// Steps to properly parse a command line:
 	// 1. Split by space and package by quotes.
@@ -915,7 +943,7 @@ void ffmpeg_instance::parse_ffmpeg_commandline(std::string text)
 	//  have also dealt with escaping for the most part. We want to parse
 	//  an FFmpeg commandline option set here, so the first character in
 	//  the string must be a '-'.
-	for (std::string& opt : opts) {
+	for (const auto& opt : opts) {
 		// Skip empty options.
 		if (opt.size() == 0)
 			continue;
@@ -1051,17 +1079,19 @@ void ffmpeg_factory::migrate(obs_data_t* data, uint64_t version)
 }
 
 static bool modified_keyframes(obs_properties_t* props, obs_property_t*, obs_data_t* settings) noexcept
-try {
-	bool is_seconds = obs_data_get_int(settings, ST_KEY_KEYFRAMES_INTERVALTYPE) == 0;
-	obs_property_set_visible(obs_properties_get(props, ST_KEY_KEYFRAMES_INTERVAL_FRAMES), !is_seconds);
-	obs_property_set_visible(obs_properties_get(props, ST_KEY_KEYFRAMES_INTERVAL_SECONDS), is_seconds);
-	return true;
-} catch (const std::exception& ex) {
-	DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
-	return false;
-} catch (...) {
-	DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
-	return false;
+{
+	try {
+		bool is_seconds = obs_data_get_int(settings, ST_KEY_KEYFRAMES_INTERVALTYPE) == 0;
+		obs_property_set_visible(obs_properties_get(props, ST_KEY_KEYFRAMES_INTERVAL_FRAMES), !is_seconds);
+		obs_property_set_visible(obs_properties_get(props, ST_KEY_KEYFRAMES_INTERVAL_SECONDS), is_seconds);
+		return true;
+	} catch (const std::exception& ex) {
+		DLOG_ERROR("Unexpected exception in function '%s': %s.", __FUNCTION_NAME__, ex.what());
+		return false;
+	} catch (...) {
+		DLOG_ERROR("Unexpected exception in function '%s'.", __FUNCTION_NAME__);
+		return false;
+	}
 }
 
 obs_properties_t* ffmpeg_factory::get_properties2(instance_t* data)
@@ -1133,7 +1163,26 @@ obs_properties_t* ffmpeg_factory::get_properties2(instance_t* data)
 
 		if (_handler && _handler->has_threading_support(this)) {
 			auto p = obs_properties_add_int_slider(grp, ST_KEY_FFMPEG_THREADS, D_TRANSLATE(ST_I18N_FFMPEG_THREADS), 0,
-												   static_cast<int64_t>(std::thread::hardware_concurrency() * 2), 1);
+												   static_cast<int64_t>(std::thread::hardware_concurrency()) * 2, 1);
+		}
+
+		{ // Frame Skipping
+			obs_video_info ovi;
+			if (!obs_get_video_info(&ovi)) {
+				throw std::runtime_error("obs_get_video_info failed unexpectedly.");
+			}
+
+			auto p = obs_properties_add_list(grp, ST_KEY_FFMPEG_FRAMERATE, D_TRANSLATE(ST_I18N_FFMPEG_FRAMERATE),
+											 OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+			// For now, an arbitrary limit of 1/10th the Framerate should be fine.
+			std::vector<char> buf{size_t{256}, 0, std::allocator<char>()};
+			for (uint32_t divisor = 1; divisor <= 10; divisor++) {
+				double fps_num = static_cast<double>(ovi.fps_num) / static_cast<double>(divisor);
+				double fps     = fps_num / static_cast<double>(ovi.fps_den);
+				snprintf(buf.data(), buf.size(), "%8.2f (%" PRIu32 "/%" PRIu32 ")", fps, ovi.fps_num,
+						 ovi.fps_den * divisor);
+				obs_property_list_add_int(p, buf.data(), divisor);
+			}
 		}
 	};
 
@@ -1220,9 +1269,9 @@ std::shared_ptr<handler::handler> ffmpeg_manager::get_handler(std::string codec)
 #endif
 }
 
-bool ffmpeg_manager::has_handler(std::string codec)
+bool ffmpeg_manager::has_handler(std::string_view codec)
 {
-	return (_handlers.find(codec) != _handlers.end());
+	return (_handlers.find(codec.data()) != _handlers.end());
 }
 
 std::shared_ptr<ffmpeg_manager> _ffmepg_encoder_factory_instance = nullptr;

@@ -16,21 +16,15 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 
 #include "gfx-blur-box.hpp"
-#include <cmath>
-#include <memory>
-#include <stdexcept>
+#include "common.hpp"
 #include "obs/gs/gs-helper.hpp"
 #include "plugin.hpp"
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4201)
-#endif
-#include <obs.h>
-#include <obs-module.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-disable.hpp"
+#include <cmath>
+#include <memory>
+#include <stdexcept>
+#include "warning-enable.hpp"
 
 #define ST_MAX_BLUR_SIZE 128 // Also change this in box.effect if modified.
 
@@ -208,7 +202,7 @@ streamfx::gfx::blur::box::~box() {}
 
 void streamfx::gfx::blur::box::set_input(std::shared_ptr<::streamfx::obs::gs::texture> texture)
 {
-	_input_texture = texture;
+	_input_texture = std::move(texture);
 }
 
 ::streamfx::gfx::blur::type streamfx::gfx::blur::box::get_type()

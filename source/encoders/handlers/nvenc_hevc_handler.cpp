@@ -20,6 +20,7 @@
 // SOFTWARE.
 
 #include "nvenc_hevc_handler.hpp"
+#include "common.hpp"
 #include "strings.hpp"
 #include "../codecs/hevc.hpp"
 #include "../encoder-ffmpeg.hpp"
@@ -28,11 +29,9 @@
 #include "plugin.hpp"
 
 extern "C" {
-#include <obs-module.h>
-#pragma warning(push)
-#pragma warning(disable : 4242 4244 4365)
+#include "warning-disable.hpp"
 #include <libavutil/opt.h>
-#pragma warning(pop)
+#include "warning-enable.hpp"
 }
 
 #define ST_KEY_PROFILE "H265.Profile"
@@ -92,13 +91,13 @@ void nvenc_hevc_handler::update(obs_data_t* settings, const AVCodec* codec, AVCo
 	nvenc::update(settings, codec, context);
 
 	if (!context->internal) {
-		if (auto v = obs_data_get_string(settings, ST_KEY_PROFILE); v && (strlen(v) > 0)) {
+		if (const char* v = obs_data_get_string(settings, ST_KEY_PROFILE); v && (v[0] != '\0')) {
 			av_opt_set(context->priv_data, "profile", v, AV_OPT_SEARCH_CHILDREN);
 		}
-		if (auto v = obs_data_get_string(settings, ST_KEY_TIER); v && (strlen(v) > 0)) {
+		if (const char* v = obs_data_get_string(settings, ST_KEY_TIER); v && (v[0] != '\0')) {
 			av_opt_set(context->priv_data, "tier", v, AV_OPT_SEARCH_CHILDREN);
 		}
-		if (auto v = obs_data_get_string(settings, ST_KEY_LEVEL); v && (strlen(v) > 0)) {
+		if (const char* v = obs_data_get_string(settings, ST_KEY_LEVEL); v && (v[0] != '\0')) {
 			av_opt_set(context->priv_data, "level", v, AV_OPT_SEARCH_CHILDREN);
 		}
 	}
@@ -146,7 +145,7 @@ void nvenc_hevc_handler::get_encoder_properties(obs_properties_t* props, const A
 			streamfx::ffmpeg::tools::avoption_list_add_entries(
 				context->priv_data, "profile", [&p](const AVOption* opt) {
 					char buffer[1024];
-					snprintf(buffer, sizeof(buffer), "%s.%s\0", S_CODEC_HEVC_PROFILE, opt->name);
+					snprintf(buffer, sizeof(buffer), "%s.%s", S_CODEC_HEVC_PROFILE, opt->name);
 					obs_property_list_add_string(p, D_TRANSLATE(buffer), opt->name);
 				});
 		}
@@ -156,7 +155,7 @@ void nvenc_hevc_handler::get_encoder_properties(obs_properties_t* props, const A
 			obs_property_list_add_int(p, D_TRANSLATE(S_STATE_DEFAULT), -1);
 			streamfx::ffmpeg::tools::avoption_list_add_entries(context->priv_data, "tier", [&p](const AVOption* opt) {
 				char buffer[1024];
-				snprintf(buffer, sizeof(buffer), "%s.%s\0", S_CODEC_HEVC_TIER, opt->name);
+				snprintf(buffer, sizeof(buffer), "%s.%s", S_CODEC_HEVC_TIER, opt->name);
 				obs_property_list_add_string(p, D_TRANSLATE(buffer), opt->name);
 			});
 		}

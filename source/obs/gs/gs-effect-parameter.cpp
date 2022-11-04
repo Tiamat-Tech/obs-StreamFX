@@ -18,19 +18,17 @@
  */
 
 #include "gs-effect-parameter.hpp"
-#include <cstring>
-#include <stdexcept>
 #include "gs-effect-pass.hpp"
 
+#include "warning-disable.hpp"
+#include <cstring>
+#include <stdexcept>
+#include "warning-enable.hpp"
+
 extern "C" {
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4201)
-#endif
+#include "warning-disable.hpp"
 #include <graphics/effect.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-enable.hpp"
 }
 
 streamfx::obs::gs::effect_parameter::effect_parameter()
@@ -48,22 +46,22 @@ streamfx::obs::gs::effect_parameter::effect_parameter(gs_eparam_t* param)
 streamfx::obs::gs::effect_parameter::effect_parameter(gs_eparam_t* param, std::shared_ptr<gs_effect_t> parent)
 	: effect_parameter(param)
 {
-	_effect_parent = parent;
+	_effect_parent = std::move(parent);
 }
 
 streamfx::obs::gs::effect_parameter::effect_parameter(gs_eparam_t* param, std::shared_ptr<gs_epass_t> parent)
 	: effect_parameter(param)
 {
-	_pass_parent = parent;
+	_pass_parent = std::move(parent);
 }
 
 streamfx::obs::gs::effect_parameter::effect_parameter(gs_eparam_t* param, std::shared_ptr<gs_eparam_t> parent)
 	: effect_parameter(param)
 {
-	_param_parent = parent;
+	_param_parent = std::move(parent);
 }
 
-streamfx::obs::gs::effect_parameter::~effect_parameter() {}
+streamfx::obs::gs::effect_parameter::~effect_parameter() = default;
 
 streamfx::obs::gs::effect_parameter::effect_parameter(const effect_parameter& rhs)
 {
@@ -83,34 +81,38 @@ streamfx::obs::gs::effect_parameter& streamfx::obs::gs::effect_parameter::operat
 }
 
 streamfx::obs::gs::effect_parameter::effect_parameter(effect_parameter&& rhs) noexcept
-try {
-	reset(rhs.get(), [](gs_eparam_t*) {});
-	_effect_parent = rhs._effect_parent;
-	_pass_parent   = rhs._pass_parent;
-	_param_parent  = rhs._param_parent;
+{
+	try {
+		reset(rhs.get(), [](gs_eparam_t*) {});
+		_effect_parent = rhs._effect_parent;
+		_pass_parent   = rhs._pass_parent;
+		_param_parent  = rhs._param_parent;
 
-	rhs.reset();
-	rhs._effect_parent = nullptr;
-	rhs._pass_parent   = nullptr;
-	rhs._param_parent  = nullptr;
-} catch (...) {
+		rhs.reset();
+		rhs._effect_parent = nullptr;
+		rhs._pass_parent   = nullptr;
+		rhs._param_parent  = nullptr;
+	} catch (...) {
+	}
 }
 
 streamfx::obs::gs::effect_parameter& streamfx::obs::gs::effect_parameter::operator=(effect_parameter&& rhs) noexcept
-try {
-	reset(rhs.get(), [](gs_eparam_t*) {});
-	_effect_parent = rhs._effect_parent;
-	_pass_parent   = rhs._pass_parent;
-	_param_parent  = rhs._param_parent;
+{
+	try {
+		reset(rhs.get(), [](gs_eparam_t*) {});
+		_effect_parent = rhs._effect_parent;
+		_pass_parent   = rhs._pass_parent;
+		_param_parent  = rhs._param_parent;
 
-	rhs.reset();
-	rhs._effect_parent = nullptr;
-	rhs._pass_parent   = nullptr;
-	rhs._param_parent  = nullptr;
+		rhs.reset();
+		rhs._effect_parent = nullptr;
+		rhs._pass_parent   = nullptr;
+		rhs._param_parent  = nullptr;
 
-	return *this;
-} catch (...) {
-	return *this;
+		return *this;
+	} catch (...) {
+		return *this;
+	}
 }
 
 std::string_view streamfx::obs::gs::effect_parameter::get_name()
@@ -694,7 +696,7 @@ void streamfx::obs::gs::effect_parameter::get_string(std::string& v)
 		v = std::string(reinterpret_cast<int8_t*>(ptr), reinterpret_cast<int8_t*>(ptr) + ptr_len - 1);
 		bfree(ptr);
 	} else {
-		v = "";
+		v.clear();
 	}
 }
 
@@ -708,6 +710,6 @@ void streamfx::obs::gs::effect_parameter::get_default_string(std::string& v)
 		v = std::string(reinterpret_cast<int8_t*>(ptr), reinterpret_cast<int8_t*>(ptr) + ptr_len - 1);
 		bfree(ptr);
 	} else {
-		v = "";
+		v.clear();
 	}
 }

@@ -21,19 +21,17 @@
 
 #pragma once
 #include "common.hpp"
+
+#include "warning-disable.hpp"
 #include <list>
 #include <utility>
+#include "warning-enable.hpp"
 
 extern "C" {
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4242 4244 4365)
-#endif
+#include "warning-disable.hpp"
 #include <libavutil/frame.h>
 #include <libavutil/hwcontext.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-enable.hpp"
 }
 
 namespace streamfx::ffmpeg::hwapi {
@@ -63,7 +61,7 @@ namespace streamfx::ffmpeg::hwapi {
 
 		virtual std::list<hwapi::device> enumerate_adapters() = 0;
 
-		virtual std::shared_ptr<hwapi::instance> create(hwapi::device target) = 0;
+		virtual std::shared_ptr<hwapi::instance> create(const hwapi::device& target) = 0;
 
 		virtual std::shared_ptr<hwapi::instance> create_from_obs() = 0;
 	};

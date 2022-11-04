@@ -18,8 +18,11 @@
  */
 
 #pragma once
-#include <memory>
 #include "nvidia-cuda.hpp"
+
+#include "warning-disable.hpp"
+#include <memory>
+#include "warning-enable.hpp"
 
 namespace streamfx::nvidia::cuda {
 	class context_stack;
@@ -60,7 +63,7 @@ namespace streamfx::nvidia::cuda {
 		{
 			_ctx->pop();
 		}
-		inline context_stack(std::shared_ptr<::streamfx::nvidia::cuda::context> ctx) : _ctx(ctx)
+		inline context_stack(std::shared_ptr<::streamfx::nvidia::cuda::context> ctx) : _ctx(std::move(ctx))
 		{
 			_ctx->push();
 		}

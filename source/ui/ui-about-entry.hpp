@@ -18,19 +18,17 @@
  */
 
 #pragma once
-#include <chrono>
-#include "ui-about.hpp"
 #include "ui-common.hpp"
+#include "ui-about.hpp"
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4251 4365 4371 4619 4946)
-#endif
+#include "warning-disable.hpp"
+#include <chrono>
+#include "warning-enable.hpp"
+
+#include "warning-disable.hpp"
 #include <QMouseEvent>
 #include "ui_about-entry.h"
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-enable.hpp"
 
 namespace streamfx::ui {
 	class about_entry : public QWidget, public Ui::AboutEntry {

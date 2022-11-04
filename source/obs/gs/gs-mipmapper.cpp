@@ -18,28 +18,22 @@
  */
 
 #include "gs-mipmapper.hpp"
-#include <sstream>
-#include <stdexcept>
 #include "obs/gs/gs-helper.hpp"
 #include "plugin.hpp"
 
+#include "warning-disable.hpp"
+#include <sstream>
+#include <stdexcept>
 // Direct3D 11
 #ifdef _WIN32
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4191 4242 4244 4365 4777 4986 5039 5204)
-#endif
 #include <Windows.h>
 #include <atlutil.h>
 #include <d3d11.h>
 #include <dxgi.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
 #endif
-#endif
-
 // OpenGL
 #include "glad/gl.h"
+#include "warning-enable.hpp"
 
 #ifdef _WIN32
 struct d3d_info {
@@ -168,7 +162,8 @@ void opengl_copy_subregion(opengl_info& info, std::shared_ptr<streamfx::obs::gs:
 	D_OPENGL_CHECK_ERROR("glBindTexture(GL_TEXTURE_2D, info.target);");
 
 	// Copy Data
-	glCopyTexSubImage2D(GL_TEXTURE_2D, mip_level, 0, 0, 0, 0, width, height);
+	glCopyTexSubImage2D(GL_TEXTURE_2D, static_cast<GLint>(mip_level), 0, 0, 0, 0, static_cast<GLsizei>(width),
+						static_cast<GLsizei>(height));
 	D_OPENGL_CHECK_ERROR("glCopyTexSubImage2D(GL_TEXTURE_2D, mip_level, 0, 0, 0, 0, width, height);");
 
 	// Target -/-> Texture Unit 1
@@ -212,7 +207,8 @@ streamfx::obs::gs::mipmapper::mipmapper()
 
 uint32_t streamfx::obs::gs::mipmapper::calculate_max_mip_level(uint32_t width, uint32_t height)
 {
-	return static_cast<uint32_t>(1 + std::lroundl(floor(log2(std::max<GLint>(width, height)))));
+	return static_cast<uint32_t>(
+		1 + std::lroundl(floor(log2(std::max<GLint>(static_cast<GLint>(width), static_cast<GLint>(height))))));
 }
 
 void streamfx::obs::gs::mipmapper::rebuild(std::shared_ptr<streamfx::obs::gs::texture> source,
@@ -327,11 +323,11 @@ void streamfx::obs::gs::mipmapper::rebuild(std::shared_ptr<streamfx::obs::gs::te
 			// Copy from the render target to the target mip level.
 #ifdef _WIN32
 			if (gs_get_device_type() == GS_DEVICE_DIRECT3D_11) {
-				d3d_copy_subregion(d3dinfo, _rt->get_texture(), mip, cwidth, cheight);
+				d3d_copy_subregion(d3dinfo, _rt->get_texture(), static_cast<uint32_t>(mip), cwidth, cheight);
 			}
 #endif
 			if (gs_get_device_type() == GS_DEVICE_OPENGL) {
-				opengl_copy_subregion(oglinfo, _rt->get_texture(), mip, cwidth, cheight);
+				opengl_copy_subregion(oglinfo, _rt->get_texture(), static_cast<uint32_t>(mip), cwidth, cheight);
 			}
 		}
 

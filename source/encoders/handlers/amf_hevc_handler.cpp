@@ -17,7 +17,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
  */
 
+//--------------------------------------------------------------------------------//
+// THIS FEATURE IS DEPRECATED. SUBMITTED PATCHES WILL BE REJECTED.
+//--------------------------------------------------------------------------------//
+
 #include "amf_hevc_handler.hpp"
+#include "common.hpp"
 #include "strings.hpp"
 #include "../codecs/hevc.hpp"
 #include "../encoder-ffmpeg.hpp"
@@ -26,11 +31,9 @@
 #include "plugin.hpp"
 
 extern "C" {
-#include <obs-module.h>
-#pragma warning(push)
-#pragma warning(disable : 4242 4244 4365)
+#include "warning-disable.hpp"
 #include <libavutil/opt.h>
-#pragma warning(pop)
+#include "warning-enable.hpp"
 }
 
 // Settings
@@ -62,6 +65,7 @@ void amf_hevc_handler::adjust_info(ffmpeg_factory* factory, const AVCodec* codec
 	name = "AMD AMF H.265/HEVC (via FFmpeg)";
 	if (!amf::is_available())
 		factory->get_info()->caps |= OBS_ENCODER_CAP_DEPRECATED;
+	factory->get_info()->caps |= OBS_ENCODER_CAP_DEPRECATED;
 }
 
 void amf_hevc_handler::get_defaults(obs_data_t* settings, const AVCodec* codec, AVCodecContext* context, bool)

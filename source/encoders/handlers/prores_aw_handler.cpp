@@ -1,5 +1,5 @@
 // FFMPEG Video Encoder Integration for OBS Studio
-// Copyright (c) 2019 Michael Fabian Dirks <info@xaymar.com>
+// Copyright (c) 2019-2022 Michael Fabian Dirks <info@xaymar.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -20,14 +20,14 @@
 // SOFTWARE.
 
 #include "prores_aw_handler.hpp"
-#include <array>
+#include "common.hpp"
 #include "../codecs/prores.hpp"
 #include "ffmpeg/tools.hpp"
 #include "plugin.hpp"
 
-extern "C" {
-#include <obs-module.h>
-}
+#include "warning-disable.hpp"
+#include <array>
+#include "warning-enable.hpp"
 
 using namespace streamfx::encoder::ffmpeg::handler;
 using namespace streamfx::encoder::codec::prores;
@@ -113,16 +113,7 @@ void prores_aw_handler::log_options(obs_data_t* settings, const AVCodec* codec, 
 	});
 }
 
-void prores_aw_handler::process_avpacket(AVPacket& packet, const AVCodec*, AVCodecContext*)
+bool prores_aw_handler::has_keyframe_support(ffmpeg_factory* instance)
 {
-	//FFmpeg Bug:
-	// When ProRes content is stored in Matroska, FFmpeg strips the size
-	// from the atom. Later when the ProRes content is demuxed from Matroska,
-	// FFmpeg creates an atom with the incorrect size, as the ATOM size
-	// should be content + atom, but FFmpeg set it to only be content. This
-	// difference leads to decoders to be off by 8 bytes.
-	//Fix (until FFmpeg stops being broken):
-	// Pad the packet with 8 bytes of 0x00.
-
-	av_grow_packet(&packet, 8);
+	return false;
 }

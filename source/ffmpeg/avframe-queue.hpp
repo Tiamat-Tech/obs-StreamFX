@@ -21,18 +21,16 @@
 
 #pragma once
 #include "common.hpp"
+
+#include "warning-disable.hpp"
 #include <deque>
 #include <mutex>
+#include "warning-enable.hpp"
 
 extern "C" {
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4242 4244 4365)
-#endif
+#include "warning-disable.hpp"
 #include <libavutil/frame.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "warning-enable.hpp"
 }
 
 namespace streamfx::ffmpeg {

@@ -19,7 +19,6 @@
 // SOFTWARE.
 
 #include "gfx-lut-consumer.hpp"
-
 #include "obs/gs/gs-helper.hpp"
 
 streamfx::gfx::lut::consumer::consumer()
@@ -29,7 +28,7 @@ streamfx::gfx::lut::consumer::consumer()
 		throw std::runtime_error("Unable to get LUT consumer effect.");
 }
 
-streamfx::gfx::lut::consumer::~consumer() {}
+streamfx::gfx::lut::consumer::~consumer() = default;
 
 std::shared_ptr<streamfx::obs::gs::effect>
 	streamfx::gfx::lut::consumer::prepare(streamfx::gfx::lut::color_depth             depth,

@@ -18,18 +18,19 @@
  */
 
 #pragma once
-#include <cstddef>
-#include <tuple>
 #include "util/util-bitmask.hpp"
 #include "util/util-library.hpp"
 
+#include "warning-disable.hpp"
+#include <cstddef>
+#include <tuple>
+#include "warning-enable.hpp"
+
 #ifdef WIN32
-#pragma warning(push)
-#pragma warning(disable : 4365)
-#pragma warning(disable : 5204)
+#include "warning-disable.hpp"
 #include <d3d11.h>
 #include <dxgi.h>
-#pragma warning(pop)
+#include "warning-enable.hpp"
 #endif
 
 #define P_CUDA_DEFINE_FUNCTION(name, ...)                             \
